@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>MiniCraft</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #87CEEB;
+            -webkit-user-select: none; user-select: none; touch-action: none;
+            position: fixed; }
+        canvas { display: block; position: fixed; top: 0; left: 0; z-index: 1; }
+        #crosshair {
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 24px; height: 24px; pointer-events: none; z-index: 10;
+        }
+        #crosshair::before, #crosshair::after {
+            content: ''; position: absolute; background: white;
+            box-shadow: 0 0 2px black;
+        }
+        #crosshair::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+        #crosshair::after { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+        #joystick {
+            position: fixed; left: 30px; bottom: 40px;
+            width: 140px; height: 140px; border-radius: 50%;
+            background: rgba(255,255,255,0.3); z-index: 100;
+            pointer-events: none;
+        }
+        #joystick-knob {
+            position: absolute; left: 50px; top: 50px;
+            width: 40px; height: 40px; border-radius: 50%;
+            background: rgba(255,255,255,0.95);
+        }
+        #jumpBtn {
+            position: fixed; right: 30px; bottom: 60px;
+            width: 90px; height: 90px; border-radius: 50%;
+            background: rgba(33,150,243,0.85);
+            color: white; font-size: 24px; font-weight: bold;
+            z-index: 100; text-align: center; line-height: 90px;
+            pointer-events: none;
+        }
+        #blockBar {
+            position: fixed; top: 20px; right: 20px; display: flex; gap: 10px; z-index: 100;
+            pointer-events: none;
+        }
+        .block-slot {
+            width: 50px; height: 50px; border-radius: 8px;
+            border: 2px solid rgba(255,255,255,0.6);
+        }
+        .block-slot.selected { border-color: yellow; border-width: 3px; }
+        #hud {
+            position: fixed; top: 20px; left: 20px; color: white;
+            font-family: monospace; font-size: 14px; z-index: 100;
+            text-shadow: 1px 1px 2px black; pointer-events: none;
+        }
+        /* 屏幕长按提示（视觉反馈） */
+        #longpressHint {
+            position: fixed; pointer-events: none; z-index: 50;
+            width: 80px; height: 80px; border-radius: 50%;
+            border: 3px solid rgba(255,0,0,0.8);
+            transform: translate(-50%, -50%) scale(0);
+            transition: transform 0.1s ease-out;
+        }
+        #longpressHint.active {
+            transform: translate(-50%, -50%) scale(1);
+        }
+    </style>
+</head>
+<body>
+    <div id="crosshair"></div>
+    <div id="hud">FPS: -- | 无操作</div>
+    <div id="blockBar">
+        <div class="block-slot selected" data-type="grass" style="background:#5fa845"></div>
+        <div class="block-slot" data-type="dirt" style="background:#8b5a2b"></div>
+        <div class="block-slot" data-type="stone" style="background:#888888"></div>
+    </div>
+    <div id="joystick"><div id="joystick-knob"></div></div>
+    <div id="jumpBtn">跳</div>
+    <div id="longpressHint"></div>
+
+    <script src="https://cdn.bootcdn.net/ajax/libs/three.js/0.160.0/three.min.js"></script>
+    <script>
+    // ============ 场景初始化 ============
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB);
+    scene.fog = new THREE.Fog(0x87CEEB, 30, 80);
+
+    const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.domElement.style.position = 'fixed';
+    renderer.domElement.style.top = '0';
+    renderer.domElement.style.left = '0';
+    renderer.domElement.style.zIndex = '1';
+    document.body.appendChild(renderer.domElement);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+    sun.position.set(30, 50, 30);
+    scene.add(sun);
+
+    function makeNoiseTexture(hexColor) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 16; canvas.height = 16;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = hexColor;
+        ctx.fillRect(0, 0, 16, 16);
+        for (let i = 0; i < 100; i++) {
+            const x = Math.floor(Math.random() * 16);
+            const y = Math.floor(Math.random() * 16);
+            const a = (Math.random() * 0.35).toFixed(2);
+            ctx.fillStyle = Math.random() > 0.5 ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a})`;
+            ctx.fillRect(x, y, 1, 1);
+        }
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        return tex;
+    }
+
+    const blockGeo = new THREE.BoxGeometry(1, 1, 1);
+    const blockMats = {
+        grass: new THREE.MeshLambertMaterial({ map: makeNoiseTexture('#5fa845') }),
+        dirt:  new THREE.MeshLambertMaterial({ map: makeNoiseTexture('#8b5a2b') }),
+        stone: new THREE.MeshLambertMaterial({ map: makeNoiseTexture('#888888') }),
+    };
+    const edgesGeo = new THREE.EdgesGeometry(blockGeo);
+    const edgesMat = new THREE.LineBasicMaterial({ color: 0x000000, opacity: 0.25, transparent: true });
+
+    const world = new Map();
+    const key = (x, y, z) => `${x},${y},${z}`;
+
+    function addBlock(x, y, z, type) {
+        if (world.has(key(x, y, z))) return;
+        const mesh = new THREE.Mesh(blockGeo, blockMats[type]);
+        mesh.position.set(x + 0.5, y + 0.5, z + 0.5);
+        mesh.userData = { x, y, z, type };
+        mesh.add(new THREE.LineSegments(edgesGeo, edgesMat));
+        scene.add(mesh);
+        world.set(key(x, y, z), { mesh, type });
+    }
+
+    function removeBlock(x, y, z) {
+        const k = key(x, y, z);
+        const b = world.get(k);
+        if (!b) return;
+        scene.remove(b.mesh);
+        world.delete(k);
+    }
+
+    const WORLD_SIZE = 32;
+    const HALF = WORLD_SIZE / 2;
+    for (let x = -HALF; x < HALF; x++) {
+        for (let z = -HALF; z < HALF; z++) {
+            addBlock(x, 0, z, 'grass');
+            addBlock(x, -1, z, 'dirt');
+            addBlock(x, -2, z, 'stone');
+        }
+    }
+
+    const player = {
+        pos: new THREE.Vector3(0, 2, 0),
+        yaw: 0, pitch: -0.3, vy: 0,
+        onGround: false, eyeHeight: 1.6,
+    };
+
+    let moveInput = { x: 0, y: 0 };
+    let jumpRequested = false;
+    let currentBlock = 'grass';
+
+    // ============ 触摸目标矩形检测 ============
+    function pointInRect(x, y, rect) {
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const r = Math.min(rect.width, rect.height) / 2;
+        return Math.hypot(x - cx, y - cy) <= r;
+    }
+
+    function getUIElements() {
+        return {
+            jump: document.getElementById('jumpBtn').getBoundingClientRect(),
+            joystick: document.getElementById('joystick').getBoundingClientRect(),
+            slots: [...document.querySelectorAll('.block-slot')].map(el => ({
+                el, rect: el.getBoundingClientRect(), type: el.dataset.type
+            })),
+        };
+    }
+
+    // ============ 摇杆 ============
+    const joystick = document.getElementById('joystick');
+    const knob = document.getElementById('joystick-knob');
+    let joyCenter = { x: 0, y: 0 };
+
+    function joyMove(x, y) {
+        const dx = x - joyCenter.x;
+        const dy = y - joyCenter.y;
+        const dist = Math.hypot(dx, dy);
+        const maxDist = 50;
+        const clamped = Math.min(dist, maxDist);
+        const angle = Math.atan2(dy, dx);
+        const kx = Math.cos(angle) * clamped;
+        const ky = Math.sin(angle) * clamped;
+        knob.style.transform = `translate(${kx}px, ${ky}px)`;
+        moveInput.x = kx / maxDist;
+        moveInput.y = ky / maxDist;
+    }
+
+    function joyEnd() {
+        moveInput = { x: 0, y: 0 };
+        knob.style.transform = 'translate(0, 0)';
+    }
+
+    // ============ 触摸管理 ============
+    // 每个 touch 的状态：{ type, startX, startY, lastX, lastY, longPressTimer, longPressFired, moved }
+    const activeTouches = new Map();
+    const LONG_PRESS_MS = 400;      // 长按触发时间
+    const MOVE_THRESHOLD = 12;      // 移动超过这个像素数视为滑动
+
+    const hud = document.getElementById('hud');
+    const hint = document.getElementById('longpressHint');
+
+    function tryPlace() {
+        const hit = raycast();
+        if (hit) {
+            addBlock(hit.block.x + hit.normal.x, hit.block.y + hit.normal.y, hit.block.z + hit.normal.z, currentBlock);
+            hud.dataset.last = '放 ✓';
+        } else {
+            hud.dataset.last = '放 空';
+        }
+    }
+
+    function tryBreak() {
+        const hit = raycast();
+        if (hit) {
+            removeBlock(hit.block.x, hit.block.y, hit.block.z);
+            hud.dataset.last = '挖 ✓';
+        } else {
+            hud.dataset.last = '挖 空';
+        }
+    }
+
+    document.addEventListener('touchstart', e => {
+        const ui = getUIElements();
+
+        for (const t of e.changedTouches) {
+            const x = t.clientX;
+            const y = t.clientY;
+
+            // 1) 跳按钮
+            if (pointInRect(x, y, ui.jump)) {
+                jumpRequested = true;
+                hud.dataset.last = '跳';
+                activeTouches.set(t.identifier, { type: 'jump' });
+                continue;
+            }
+
+            // 2) 方块选择格
+            let slotHit = null;
+            for (const s of ui.slots) {
+                if (pointInRect(x, y, s.rect)) { slotHit = s; break; }
+            }
+            if (slotHit) {
+                document.querySelectorAll('.block-slot').forEach(s => s.classList.remove('selected'));
+                slotHit.el.classList.add('selected');
+                currentBlock = slotHit.type;
+                hud.dataset.last = `方块: ${currentBlock}`;
+                activeTouches.set(t.identifier, { type: 'slot' });
+                continue;
+            }
+
+            // 3) 摇杆
+            if (pointInRect(x, y, ui.joystick)) {
+                const rect = joystick.getBoundingClientRect();
+                joyCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+                joyMove(x, y);
+                activeTouches.set(t.identifier, { type: 'joystick' });
+                hud.dataset.last = '摇杆';
+                continue;
+            }
+
+            // 4) 空白区域：滑动=视角，短按=放置，长按=破坏
+            const state = {
+                type: 'empty',
+                startX: x, startY: y,
+                lastX: x, lastY: y,
+                moved: false,
+                longPressFired: false,
+                longPressTimer: null,
+            };
+            state.longPressTimer = setTimeout(() => {
+                if (!state.moved) {
+                    state.longPressFired = true;
+                    tryBreak();
+                    // 显示长按反馈圈
+                    hint.style.left = x + 'px';
+                    hint.style.top = y + 'px';
+                    hint.classList.add('active');
+                    setTimeout(() => hint.classList.remove('active'), 150);
+                }
+            }, LONG_PRESS_MS);
+            activeTouches.set(t.identifier, state);
+        }
+        e.preventDefault();
+    }, { passive: false });
+
+    document.addEventListener('touchmove', e => {
+        for (const t of e.changedTouches) {
+            const info = activeTouches.get(t.identifier);
+            if (!info) continue;
+
+            if (info.type === 'joystick') {
+                joyMove(t.clientX, t.clientY);
+            } else if (info.type === 'empty') {
+                const dx = t.clientX - info.lastX;
+                const dy = t.clientY - info.lastY;
+                const totalMove = Math.hypot(t.clientX - info.startX, t.clientY - info.startY);
+
+                if (totalMove > MOVE_THRESHOLD) {
+                    info.moved = true;
+                    if (info.longPressTimer) {
+                        clearTimeout(info.longPressTimer);
+                        info.longPressTimer = null;
+                    }
+                }
+
+                if (info.moved) {
+                    // 转视角
+                    player.yaw -= dx * 0.005;
+                    player.pitch = Math.max(-1.5, Math.min(1.5, player.pitch - dy * 0.005));
+                }
+                info.lastX = t.clientX;
+                info.lastY = t.clientY;
+            }
+        }
+        e.preventDefault();
+    }, { passive: false });
+
+    document.addEventListener('touchend', e => {
+        for (const t of e.changedTouches) {
+            const info = activeTouches.get(t.identifier);
+            if (!info) continue;
+
+            if (info.type === 'joystick') {
+                joyEnd();
+            } else if (info.type === 'empty') {
+                if (info.longPressTimer) {
+                    clearTimeout(info.longPressTimer);
+                    info.longPressTimer = null;
+                }
+                // 如果没移动且长按没触发，就是短按 -> 放置
+                if (!info.moved && !info.longPressFired) {
+                    tryPlace();
+                }
+            }
+            activeTouches.delete(t.identifier);
+        }
+    });
+
+    document.addEventListener('touchcancel', e => {
+        for (const t of e.changedTouches) {
+            const info = activeTouches.get(t.identifier);
+            if (!info) continue;
+            if (info.type === 'joystick') joyEnd();
+            if (info.longPressTimer) clearTimeout(info.longPressTimer);
+            activeTouches.delete(t.identifier);
+        }
+    });
+
+    // ============ 射线检测 ============
+    const raycaster = new THREE.Raycaster();
+    raycaster.far = 6;
+
+    function raycast() {
+        const dir = new THREE.Vector3(
+            -Math.sin(player.yaw) * Math.cos(player.pitch),
+            Math.sin(player.pitch),
+            -Math.cos(player.yaw) * Math.cos(player.pitch)
+        );
+        raycaster.set(camera.position, dir);
+        const meshes = [...world.values()].map(b => b.mesh);
+        const hits = raycaster.intersectObjects(meshes);
+        if (hits.length === 0) return null;
+        const h = hits[0];
+        return { block: h.object.userData, normal: h.face.normal.clone() };
+    }
+
+    // ============ 游戏循环 ============
+    let lastTime = performance.now();
+    let fpsTimer = 0, fpsCount = 0;
+
+    function update() {
+        const now = performance.now();
+        const dt = Math.min((now - lastTime) / 1000, 0.05);
+        lastTime = now;
+
+        const speed = 6;
+        const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+        const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
+        const move = new THREE.Vector3();
+        move.addScaledVector(forward, -moveInput.y);
+        move.addScaledVector(right, moveInput.x);
+        if (move.length() > 1) move.normalize();
+        player.pos.x += move.x * speed * dt;
+        player.pos.z += move.z * speed * dt;
+
+        if (jumpRequested && player.onGround) { player.vy = 8.5; player.onGround = false; }
+        jumpRequested = false;
+
+        player.vy -= 22 * dt;
+        player.vy = Math.max(player.vy, -30);
+        player.pos.y += player.vy * dt;
+
+        const px = Math.floor(player.pos.x);
+        const pz = Math.floor(player.pos.z);
+        let groundY = -Infinity;
+        for (let y = Math.floor(player.pos.y); y >= Math.floor(player.pos.y) - 3; y--) {
+            if (world.has(key(px, y, pz))) { groundY = y + 1; break; }
+        }
+        if (groundY > -Infinity && player.pos.y <= groundY) {
+            player.pos.y = groundY; player.vy =长 0; player.onGround = true;
+        } else { player.onGround = false; }
+
+        camera.position.set(player.pos.x, player.pos.y + player.eyeHeight, player.pos.z);
+        camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
+        renderer.render(scene, camera);
+
+        fpsCount++; fpsTimer += dt;
+        if (fpsTimer >= 0.5) {
+            hud.textContent = `FPS: ${Math.round(fpsCount / fpsTimer)} | 位置: ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)} | 操作: ${hud.dataset.last || '无'}`;
+            fpsCount = 0; fpsTimer = 0;
+        }
+        requestAnimationFrame(update);
+    }
+
+    window.addEventListener('resize', () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+    });
+
+    update();
+    </script>
+</body>
+</html>
