@@ -79,7 +79,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.min.js"></script>
     <script>
     // ==========================================================
-    // 方块配置（每个方块类型一个定义，相当于 JSON 配置文件）
+    // 方块配置
     // ==========================================================
     const BLOCK_CONFIG = {
         grass: { id: 1, name: '草方块', color: '#5fa845', solid: true },
@@ -87,7 +87,6 @@
         stone: { id: 3, name: '石头',   color: '#888888', solid: true },
     };
 
-    // 根据配置构建方块材质
     function makeNoiseTexture(hexColor) {
         const canvas = document.createElement('canvas');
         canvas.width = 16; canvas.height = 16;
@@ -151,13 +150,12 @@
     scene.add(sun);
 
     // ==========================================================
-    // 世界数据（无限 + 程序化）
+    // 世界数据
     // ==========================================================
-    const modifications = new Map();  // "x,y,z" -> blockType 或 null
+    const modifications = new Map();
     const worldKey = (x, y, z) => `${x},${y},${z}`;
 
     function generateBlock(x, y, z) {
-        // 地形生成规则
         if (y === -2) return 'stone';
         if (y === -1) return 'dirt';
         if (y === 0) return 'grass';
@@ -179,9 +177,9 @@
     }
 
     // ==========================================================
-    // 动态渲染（无限世界核心）
+    // 动态渲染
     // ==========================================================
-    const renderedMeshes = new Map();  // key -> mesh
+    const renderedMeshes = new Map();
 
     function addMeshAt(x, y, z, type) {
         const k = worldKey(x, y, z);
@@ -203,26 +201,46 @@
         }
     }
 
+    // ★★★ 修复版：分两部分处理 ★★★
+    // 1. 程序化地形只在 y=-2~0 生成
+    // 2. 玩家修改的方块（modifications）无论 y 在哪都保留
     function updateRender() {
         const cx = Math.floor(player.pos.x);
         const cz = Math.floor(player.pos.z);
         const needed = new Set();
 
+        // 第 1 部分：程序化地形（y = -2 ~ 0）
         for (let dx = -RENDER_RADIUS; dx <= RENDER_RADIUS; dx++) {
             for (let dz = -RENDER_RADIUS; dz <= RENDER_RADIUS; dz++) {
                 const x = cx + dx;
                 const z = cz + dz;
                 for (let y = -2; y <= 0; y++) {
-                    const type = getBlockType(x, y, z);
+                    const type = generateBlock(x, y, z);
                     if (type !== null) {
                         const k = worldKey(x, y, z);
+                        // 如果玩家把这块挖了（modifications 里记了 null），就跳过
+                        if (modifications.has(k) && modifications.get(k) === null) continue;
                         needed.add(k);
-                        if (!renderedMeshes.has(k)) addMeshAt(x, y, z, type);
+                        if (!renderedMeshes.has(k)) {
+                            const actualType = modifications.has(k) ? modifications.get(k) : type;
+                            addMeshAt(x, y, z, actualType);
+                        }
                     }
                 }
             }
         }
 
+        // 第 2 部分：玩家修改的方块（无论 y 多高，只要在渲染范围内，就要保留）
+        for (const [k, type] of modifications) {
+            if (type === null) continue; // 挖掉的跳过
+            const [x, y, z] = k.split(',').map(Number);
+            if (Math.abs(x - cx) <= RENDER_RADIUS && Math.abs(z - cz) <= RENDER_RADIUS) {
+                needed.add(k);
+                if (!renderedMeshes.has(k)) addMeshAt(x, y, z, type);
+            }
+        }
+
+        // 第 3 部分：卸载不需要的
         for (const k of [...renderedMeshes.keys()]) {
             if (!needed.has(k)) {
                 const mesh = renderedMeshes.get(k);
@@ -273,7 +291,6 @@
         return false;
     }
 
-    // 从 (x, z) 向下扫描，找地面方块的顶部 y 坐标
     function findGroundY(x, z, fromY) {
         const fx = Math.floor(x);
         const fz = Math.floor(z);
@@ -320,7 +337,6 @@
 
         if (isSolid(tx, ty, tz)) { flash('放 ✗ 位置已占用'); return; }
 
-        // 检查新方块会不会卡住玩家
         const pMinX = player.pos.x - PLAYER_WIDTH / 2;
         const pMaxX = player.pos.x + PLAYER_WIDTH / 2;
         const pMinY = player.pos.y;
@@ -367,7 +383,6 @@
     let jumpRequested = false;
     let currentBlock = 'grass';
 
-    // 动态生成方块选择按钮
     const blockBar = document.getElementById('blockBar');
     for (const k in BLOCK_CONFIG) {
         const el = document.createElement('div');
@@ -394,7 +409,6 @@
         };
     }
 
-    // 摇杆
     const joystick = document.getElementById('joystick');
     const knob = document.getElementById('joystick-knob');
     let joyCenter = { x: 0, y: 0 };
@@ -418,7 +432,6 @@
         knob.style.transform = 'translate(0, 0)';
     }
 
-    // 触摸
     const activeTouches = new Map();
     const LONG_PRESS_MS = 450;
     const MOVE_THRESHOLD = 25;
@@ -458,7 +471,6 @@
                 continue;
             }
 
-            // 空白区域
             const state = {
                 type: 'empty',
                 startX: x, startY: y,
@@ -544,7 +556,7 @@
     });
 
     // ==========================================================
-    // 游戏循环（固定时间步长，消除抖动）
+    // 游戏循环
     // ==========================================================
     const hud = document.getElementById('hud');
     const hint = document.getElementById('longpressHint');
@@ -555,7 +567,6 @@
     let fpsTimer = 0, fpsCount = 0, renderTimer = 0;
 
     function physicsStep(dt) {
-        // ---- 水平移动 ----
         const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
         const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
         const move = new THREE.Vector3();
@@ -574,36 +585,30 @@
         tryZ.z += dz;
         if (!isColliding(tryZ)) player.pos.z = tryZ.z;
 
-        // ---- 跳跃 ----
         if (jumpRequested && player.onGround) {
             player.vy = JUMP_SPEED;
             player.onGround = false;
         }
         jumpRequested = false;
 
-        // ---- 垂直物理（关键：精确吸附到地面，消除抖动） ----
         const groundY = findGroundY(player.pos.x, player.pos.z, player.pos.y + 0.01);
 
         if (player.onGround) {
-            // 站着时检查脚下还有没有支撑
             if (groundY === -Infinity || player.pos.y > groundY + 0.01) {
                 player.onGround = false;
             } else {
-                // 精确吸附到地面（消除所有误差）
                 player.pos.y = groundY;
                 player.vy = 0;
                 return;
             }
         }
 
-        // 空中：应用重力
         player.vy -= GRAVITY * dt;
         player.vy = Math.max(player.vy, -30);
 
         const tryY = player.pos.y + player.vy * dt;
 
         if (player.vy <= 0) {
-            // 向下落
             if (groundY !== -Infinity && tryY <= groundY) {
                 player.pos.y = groundY;
                 player.vy = 0;
@@ -612,7 +617,6 @@
                 player.pos.y = tryY;
             }
         } else {
-            // 向上跳：检查头部碰撞
             const tryPos = player.pos.clone();
             tryPos.y = tryY;
             if (isColliding(tryPos)) {
@@ -628,7 +632,6 @@
         const frameTime = Math.min((now - lastTime) / 1000, 0.1);
         lastTime = now;
 
-        // 固定时间步长物理
         accumulator += frameTime;
         let steps = 0;
         while (accumulator >= FIXED_DT && steps < 5) {
@@ -637,27 +640,23 @@
             steps++;
         }
 
-        // 重生
         if (player.pos.y < -20) {
             player.pos.set(0, 3, 0);
             player.vy = 0;
             player.onGround = false;
         }
 
-        // 动态渲染
         renderTimer += frameTime;
         if (renderTimer > 0.15) {
             renderTimer = 0;
             updateRender();
         }
 
-        // 相机
         camera.position.set(player.pos.x, player.pos.y + EYE_HEIGHT, player.pos.z);
         camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
 
         renderer.render(scene, camera);
 
-        // HUD
         fpsCount++; fpsTimer += frameTime;
         if (fpsTimer >= 0.5) {
             hud.innerHTML =
