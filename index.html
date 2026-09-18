@@ -51,8 +51,9 @@
         .block-slot.selected { border-color: yellow; border-width: 3px; }
         #hud {
             position: fixed; top: 20px; left: 20px; color: white;
-            font-family: monospace; font-size: 14px; z-index: 100;
+            font-family: monospace; font-size: 13px; z-index: 100;
             text-shadow: 1px 1px 2px black; pointer-events: none;
+            line-height: 1.5;
         }
         #longpressHint {
             position: fixed; pointer-events: none; z-index: 50;
@@ -68,7 +69,7 @@
 </head>
 <body>
     <div id="crosshair"></div>
-    <div id="hud">FPS: -- | 无操作</div>
+    <div id="hud">加载中...</div>
     <div id="blockBar">
         <div class="block-slot selected" data-type="grass" style="background:#5fa845"></div>
         <div class="block-slot" data-type="dirt" style="background:#8b5a2b"></div>
@@ -81,21 +82,20 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.min.js"></script>
     <script>
     // ============ 常量 ============
-    const WORLD_SIZE = 32;       // 世界长宽
-    const WORLD_HEIGHT = 32;     // 世界高度
-    const HALF = WORLD_SIZE / 2;
-    const PLAYER_WIDTH = 0.6;    // 玩家碰撞箱宽
-    const PLAYER_HEIGHT = 1.8;   // 玩家碰撞箱高
     const GRAVITY = 22;
     const JUMP_SPEED = 8.5;
     const MOVE_SPEED = 6;
+    const PLAYER_WIDTH = 0.6;
+    const PLAYER_HEIGHT = 1.8;
+    const RENDER_RADIUS = 12;   // 渲染半径（±12 格 = 25x25）
+    const EYE_HEIGHT = 1.6;
 
     // ============ 场景 ============
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87CEEB);
-    scene.fog = new THREE.Fog(0x87CEEB, 30, 80);
+    scene.fog = new THREE.Fog(0x87CEEB, 20, 60);
 
-    const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 200);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(innerWidth, innerHeight);
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -110,7 +110,7 @@
     sun.position.set(30, 50, 30);
     scene.add(sun);
 
-    // ============ 方块材质 ============
+    // ============ 纹理与材质 ============
     function makeNoiseTexture(hexColor) {
         const canvas = document.createElement('canvas');
         canvas.width = 16; canvas.height = 16;
@@ -139,52 +139,97 @@
     const edgesGeo = new THREE.EdgesGeometry(blockGeo);
     const edgesMat = new THREE.LineBasicMaterial({ color: 0x000000, opacity: 0.25, transparent: true });
 
-    // ============ 世界数据 ============
-    const world = new Map();
+    // ============ 无限世界数据 ============
+    // 地形是程序化生成的：y=0 草，y=-1 泥土，y=-2 石头，其他都是空气
+    // 玩家的修改（放/挖）记录在 modifications 里
+    const modifications = new Map(); // key -> type | null
     const key = (x, y, z) => `${x},${y},${z}`;
-    const isSolid = (x, y, z) => world.has(key(x, y, z));
 
-    function addBlock(x, y, z, type) {
-        if (isSolid(x, y, z)) return false;
+    function generateBlock(x, y, z) {
+        if (y === -2) return 'stone';
+        if (y === -1) return 'dirt';
+        if (y === 0) return 'grass';
+        return null;
+    }
+
+    function getBlockType(x, y, z) {
+        const k = key(x, y, z);
+        if (modifications.has(k)) return modifications.get(k);
+        return generateBlock(x, y, z);
+    }
+
+    function isSolid(x, y, z) {
+        return getBlockType(x, y, z) !== null;
+    }
+
+    function setBlockType(x, y, z, type) {
+        modifications.set(key(x, y, z), type);
+    }
+
+    // ============ 动态渲染（无限世界的核心） ============
+    const renderedMeshes = new Map(); // key -> mesh
+
+    function addMesh(x, y, z, type) {
         const mesh = new THREE.Mesh(blockGeo, blockMats[type]);
         mesh.position.set(x + 0.5, y + 0.5, z + 0.5);
         mesh.userData = { x, y, z, type };
         mesh.add(new THREE.LineSegments(edgesGeo, edgesMat));
         scene.add(mesh);
-        world.set(key(x, y, z), { mesh, type });
-        return true;
+        renderedMeshes.set(key(x, y, z), mesh);
     }
 
-    function removeBlock(x, y, z) {
+    function removeMesh(x, y, z) {
         const k = key(x, y, z);
-        const b = world.get(k);
-        if (!b) return false;
-        scene.remove(b.mesh);
-        world.delete(k);
-        return true;
+        const mesh = renderedMeshes.get(k);
+        if (mesh) {
+            scene.remove(mesh);
+            renderedMeshes.delete(k);
+        }
     }
 
-    // 生成超平坦世界
-    for (let x = -HALF; x < HALF; x++) {
-        for (let z = -HALF; z < HALF; z++) {
-            addBlock(x, 0, z, 'grass');
-            addBlock(x, -1, z, 'dirt');
-            addBlock(x, -2, z, 'stone');
+    // 根据玩家位置，动态加载/卸载周围的方块
+    function updateRender() {
+        const cx = Math.floor(player.pos.x);
+        const cz = Math.floor(player.pos.z);
+
+        const needed = new Set();
+
+        // 加载需要的
+        for (let x = cx - RENDER_RADIUS; x <= cx + RENDER_RADIUS; x++) {
+            for (let z = cz - RENDER_RADIUS; z <= cz + RENDER_RADIUS; z++) {
+                for (let y = -3; y <= 32; y++) {
+                    const type = getBlockType(x, y, z);
+                    if (type !== null) {
+                        const k = key(x, y, z);
+                        needed.add(k);
+                        if (!renderedMeshes.has(k)) {
+                            addMesh(x, y, z, type);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 卸载不需要的
+        for (const k of [...renderedMeshes.keys()]) {
+            if (!needed.has(k)) {
+                const mesh = renderedMeshes.get(k);
+                scene.remove(mesh);
+                renderedMeshes.delete(k);
+            }
         }
     }
 
     // ============ 玩家 ============
     const player = {
-        pos: new THREE.Vector3(0, 2, 0), // 脚的位置
+        pos: new THREE.Vector3(0, 3, 0),
         yaw: 0,
         pitch: -0.3,
         vy: 0,
         onGround: false,
-        eyeHeight: 1.6,
     };
 
     // ============ 碰撞检测 ============
-    // 检查玩家 AABB 在位置 pos 时，是否与世界中的实体方块重叠
     function isColliding(pos) {
         const minX = pos.x - PLAYER_WIDTH / 2;
         const maxX = pos.x + PLAYER_WIDTH / 2;
@@ -201,7 +246,6 @@
             for (let y = y0; y <= y1; y++) {
                 for (let z = z0; z <= z1; z++) {
                     if (!isSolid(x, y, z)) continue;
-                    // AABB 重叠测试
                     if (maxX > x && minX < x + 1 &&
                         maxY > y && minY < y + 1 &&
                         maxZ > z && minZ < z + 1) {
@@ -213,12 +257,89 @@
         return false;
     }
 
+    // ============ 射线检测 ============
+    const raycaster = new THREE.Raycaster();
+    raycaster.far = 6;
+
+    function raycast() {
+        const dir = new THREE.Vector3(
+            -Math.sin(player.yaw) * Math.cos(player.pitch),
+            Math.sin(player.pitch),
+            -Math.cos(player.yaw) * Math.cos(player.pitch)
+        );
+        raycaster.set(camera.position, dir);
+        const meshes = [...renderedMeshes.values()];
+        const hits = raycaster.intersectObjects(meshes, false);
+        if (hits.length === 0) return null;
+        const h = hits[0];
+        return { block: h.object.userData, normal: h.face.normal.clone() };
+    }
+
+    // ============ HUD ============
+    const hud = document.getElementById('hud');
+    const hint = document.getElementById('longpressHint');
+    let lastAction = '无';
+
+    function flash(msg) {
+        lastAction = msg;
+        hud.dataset.last = msg;
+    }
+
+    // ============ 放置/破坏 ============
+    function tryPlace() {
+        const hit = raycast();
+        if (!hit) { flash('放 ✗ 没对准'); return; }
+        const { x, y, z } = hit.block;
+        const n = hit.normal;
+        const tx = x + n.x, ty = y + n.y, tz = z + n.z;
+
+        if (isSolid(tx, ty, tz)) { flash('放 ✗ 已占用'); return; }
+
+        // 检查会不会卡住自己
+        const pMinX = player.pos.x - PLAYER_WIDTH / 2;
+        const pMaxX = player.pos.x + PLAYER_WIDTH / 2;
+        const pMinY = player.pos.y;
+        const pMaxY = player.pos.y + PLAYER_HEIGHT;
+        const pMinZ = player.pos.z - PLAYER_WIDTH / 2;
+        const pMaxZ = player.pos.z + PLAYER_WIDTH / 2;
+
+        if (pMaxX > tx && pMinX < tx + 1 &&
+            pMaxY > ty && pMinY < ty + 1 &&
+            pMaxZ > tz && pMinZ < tz + 1) {
+            flash('放 ✗ 卡住自己');
+            return;
+        }
+
+        setBlockType(tx, ty, tz, currentBlock);
+        addMesh(tx, ty, tz, currentBlock);
+        flash('放 ✓');
+    }
+
+    function tryBreak() {
+        const hit = raycast();
+        if (!hit) { flash('挖 ✗ 没对准'); return; }
+        const { x, y, z } = hit.block;
+
+        if (y <= -2) { flash('基岩挖不动'); return; }
+
+        const footX = Math.floor(player.pos.x);
+        const footZ = Math.floor(player.pos.z);
+        const footY = Math.floor(player.pos.y - 0.05);
+        if (x === footX && y === footY && z === footZ) {
+            flash('不能挖脚下');
+            return;
+        }
+
+        setBlockType(x, y, z, null);
+        removeMesh(x, y, z);
+        flash('挖 ✓');
+    }
+
     // ============ 输入状态 ============
     let moveInput = { x: 0, y: 0 };
     let jumpRequested = false;
     let currentBlock = 'grass';
 
-    // ============ 触摸目标判定 ============
     function pointInRect(x, y, rect) {
         const cx = rect.left + rect.width / 2;
         const cy = rect.top + rect.height / 2;
@@ -260,86 +381,10 @@
         knob.style.transform = 'translate(0, 0)';
     }
 
-    // ============ 射线检测 ============
-    const raycaster = new THREE.Raycaster();
-    raycaster.far = 6;
-
-    function raycast() {
-        const dir = new THREE.Vector3(
-            -Math.sin(player.yaw) * Math.cos(player.pitch),
-            Math.sin(player.pitch),
-            -Math.cos(player.yaw) * Math.cos(player.pitch)
-        );
-        raycaster.set(camera.position, dir);
-        const meshes = [...world.values()].map(b => b.mesh);
-        const hits = raycaster.intersectObjects(meshes);
-        if (hits.length === 0) return null;
-        const h = hits[0];
-        return { block: h.object.userData, normal: h.face.normal.clone() };
-    }
-
-    // ============ 放置与破坏 ============
-    const hud = document.getElementById('hud');
-    const hint = document.getElementById('longpressHint');
-
-    function tryPlace() {
-        const hit = raycast();
-        if (!hit) { hud.dataset.last = '放 空'; return; }
-        const { x, y, z } = hit.block;
-        const n = hit.normal;
-        const tx = x + n.x, ty = y + n.y, tz = z + n.z;
-
-        // 边界检查
-        if (ty < 0 || ty >= WORLD_HEIGHT) { hud.dataset.last = '放 越界'; return; }
-        if (tx < -HALF || tx >= HALF || tz < -HALF || tz >= HALF) { hud.dataset.last = '放 越界'; return; }
-
-        // 检查目标格是否为空
-        if (isSolid(tx, ty, tz)) { hud.dataset.last = '放 已占用'; return; }
-
-        // 检查玩家是否会被卡住（放上去后会不会跟玩家重叠）
-        const testMinX = player.pos.x - PLAYER_WIDTH / 2;
-        const testMaxX = player.pos.x + PLAYER_WIDTH / 2;
-        const testMinY = player.pos.y;
-        const testMaxY = player.pos.y + PLAYER_HEIGHT;
-        const testMinZ = player.pos.z - PLAYER_WIDTH / 2;
-        const testMaxZ = player.pos.z + PLAYER_WIDTH / 2;
-
-        if (testMaxX > tx && testMinX < tx + 1 &&
-            testMaxY > ty && testMinY < ty + 1 &&
-            testMaxZ > tz && testMinZ < tz + 1) {
-            hud.dataset.last = '放 卡住自己';
-            return;
-        }
-
-        addBlock(tx, ty, tz, currentBlock);
-        hud.dataset.last = '放 ✓';
-    }
-
-    function tryBreak() {
-        const hit = raycast();
-        if (!hit) { hud.dataset.last = '挖 空'; return; }
-        const { x, y, z } = hit.block;
-
-        // 不能挖 y=0 的基岩
-        if (y <= 0) { hud.dataset.last = '基岩挖不动'; return; }
-
-        // 不能挖自己脚下的方块（会掉进虚空）
-        const footX = Math.floor(player.pos.x);
-        const footZ = Math.floor(player.pos.z);
-        const footY = Math.floor(player.pos.y - 0.05);
-        if (x === footX && y === footY && z === footZ) {
-            hud.dataset.last = '不能挖脚下';
-            return;
-        }
-
-        removeBlock(x, y, z);
-        hud.dataset.last = '挖 ✓';
-    }
-
     // ============ 触摸管理 ============
     const activeTouches = new Map();
-    const LONG_PRESS_MS = 400;
-    const MOVE_THRESHOLD = 12;
+    const LONG_PRESS_MS = 450;      // 长按触发破坏
+    const MOVE_THRESHOLD = 30;      // 超过 30 像素才判定为滑动（之前 12 太敏感）
 
     document.addEventListener('touchstart', e => {
         const ui = getUIElements();
@@ -348,15 +393,13 @@
             const x = t.clientX;
             const y = t.clientY;
 
-            // 跳按钮
             if (pointInRect(x, y, ui.jump)) {
                 jumpRequested = true;
-                hud.dataset.last = '跳';
+                flash('跳');
                 activeTouches.set(t.identifier, { type: 'jump' });
                 continue;
             }
 
-            // 方块选择
             let slotHit = null;
             for (const s of ui.slots) {
                 if (pointInRect(x, y, s.rect)) { slotHit = s; break; }
@@ -365,22 +408,20 @@
                 document.querySelectorAll('.block-slot').forEach(s => s.classList.remove('selected'));
                 slotHit.el.classList.add('selected');
                 currentBlock = slotHit.type;
-                hud.dataset.last = `方块: ${currentBlock}`;
+                flash(`方块: ${currentBlock}`);
                 activeTouches.set(t.identifier, { type: 'slot' });
                 continue;
             }
 
-            // 摇杆
             if (pointInRect(x, y, ui.joystick)) {
                 const rect = joystick.getBoundingClientRect();
                 joyCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
                 joyMove(x, y);
                 activeTouches.set(t.identifier, { type: 'joystick' });
-                hud.dataset.last = '摇杆';
                 continue;
             }
 
-            // 空白区域：滑动=视角，单击=放置，长按=破坏
+            // 空白区域
             const state = {
                 type: 'empty',
                 startX: x, startY: y,
@@ -447,6 +488,7 @@
                     clearTimeout(info.longPressTimer);
                     info.longPressTimer = null;
                 }
+                // 短按（没移动超过阈值，也没触发长按）→ 放置
                 if (!info.moved && !info.longPressFired) {
                     tryPlace();
                 }
@@ -468,6 +510,7 @@
     // ============ 游戏循环 ============
     let lastTime = performance.now();
     let fpsTimer = 0, fpsCount = 0;
+    let renderTimer = 0;
 
     function update() {
         const now = performance.now();
@@ -485,12 +528,10 @@
         const dx = move.x * MOVE_SPEED * dt;
         const dz = move.z * MOVE_SPEED * dt;
 
-        // X 轴
         const tryX = player.pos.clone();
         tryX.x += dx;
         if (!isColliding(tryX)) player.pos.x = tryX.x;
 
-        // Z 轴
         const tryZ = player.pos.clone();
         tryZ.z += dz;
         if (!isColliding(tryZ)) player.pos.z = tryZ.z;
@@ -502,49 +543,67 @@
         }
         jumpRequested = false;
 
-        // ---- 重力 ----
-        player.vy -= GRAVITY * dt;
-        player.vy = Math.max(player.vy, -30);
-
-        const tryY = player.pos.clone();
-        tryY.y += player.vy * dt;
-
-        if (isColliding(tryY)) {
-            if (player.vy < 0) {
-                // 向下撞到方块：落地
-                let finalY = tryY.y;
-                // 微调，使玩家刚好站在方块上
-                while (isColliding({ x: player.pos.x, y: finalY, z: player.pos.z }) && finalY < player.pos.y) {
-                    finalY += 0.02;
-                }
-                player.pos.y = finalY;
-                player.vy = 0;
-                player.onGround = true;
+        // ---- 重力（关键修复：站在地面上时不累加重力） ----
+        if (player.onGround) {
+            // 检查脚下是否还有方块支撑
+            const below = { x: player.pos.x, y: player.pos.y - 0.02, z: player.pos.z };
+            if (!isColliding(below)) {
+                player.onGround = false;
             } else {
-                // 向上撞头
+                // 稳定站在地面上，不施加重力
                 player.vy = 0;
             }
-        } else {
-            player.pos.y = tryY.y;
+        }
+
+        if (!player.onGround) {
+            player.vy -= GRAVITY * dt;
+            player.vy = Math.max(player.vy, -30);
+
+            const tryY = player.pos.clone();
+            tryY.y += player.vy * dt;
+
+            if (isColliding(tryY)) {
+                if (player.vy < 0) {
+                    // 落地：从旧位置向下扫到新位置，找到最远的安全位置
+                    let safeY = player.pos.y;
+                    const step = 0.02;
+                    let y = player.pos.y;
+                    while (y > tryY.y) {
+                        y -= step;
+                        if (isColliding({ x: player.pos.x, y: y, z: player.pos.z })) {
+                            break;
+                        }
+                        safeY = y;
+                    }
+                    // 吸附到最近的安全位置
+                    player.pos.y = Math.round(safeY * 100) / 100;
+                    player.vy = 0;
+                    player.onGround = true;
+                } else {
+                    // 撞头
+                    player.vy = 0;
+                }
+            } else {
+                player.pos.y = tryY.y;
+            }
+        }
+
+        // 掉进虚空重生
+        if (player.pos.y < -20) {
+            player.pos.set(0, 3, 0);
+            player.vy = 0;
             player.onGround = false;
         }
 
-        // ---- 边界保护（不能掉出世界） ----
-        if (player.pos.y < -10) {
-            // 掉进虚空：重生
-            player.pos.set(0, 5, 0);
-            player.vy = 0;
+        // ---- 动态渲染 ----
+        renderTimer += dt;
+        if (renderTimer > 0.1) {
+            renderTimer = 0;
+            updateRender();
         }
-        const margin = PLAYER_WIDTH / 2 + 0.01;
-        player.pos.x = Math.max(-HALF + margin, Math.min(HALF - margin, player.pos.x));
-        player.pos.z = Math.max(-HALF + margin, Math.min(HALF - margin, player.pos.z));
 
         // ---- 相机 ----
-        camera.position.set(
-            player.pos.x,
-            player.pos.y + player.eyeHeight,
-            player.pos.z
-        );
+        camera.position.set(player.pos.x, player.pos.y + EYE_HEIGHT, player.pos.z);
         camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
 
         renderer.render(scene, camera);
@@ -552,7 +611,7 @@
         // ---- HUD ----
         fpsCount++; fpsTimer += dt;
         if (fpsTimer >= 0.5) {
-            hud.textContent = `FPS: ${Math.round(fpsCount / fpsTimer)} | 位置: ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)} | ${player.onGround ? '着地' : '空中'} | ${hud.dataset.last || '无'}`;
+            hud.innerHTML = `FPS: ${Math.round(fpsCount / fpsTimer)} | 位置: ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(2)}, ${player.pos.z.toFixed(1)}<br>状态: ${player.onGround ? '着地' : '空中'} | 操作: ${lastAction}<br>方块数: ${renderedMeshes.size}`;
             fpsCount = 0; fpsTimer = 0;
         }
         requestAnimationFrame(update);
@@ -564,6 +623,8 @@
         renderer.setSize(innerWidth, innerHeight);
     });
 
+    // 启动：先渲染一次初始世界
+    updateRender();
     update();
     </script>
 </body>
