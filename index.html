@@ -81,9 +81,6 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.min.js"></script>
     <script>
-    // ==========================================================
-    // 配置
-    // ==========================================================
     const BLOCK_CONFIG = {
         grass: { name: '草方块', color: '#5fa845' },
         dirt:  { name: '泥土',   color: '#8b5a2b' },
@@ -96,14 +93,12 @@
         PLAYER_W: 0.6, PLAYER_H: 1.8, EYE_H: 1.6,
         RENDER_RADIUS: 9,
         CAVE_DEPTH_LIMIT: -12,
-        SAVE_KEY: 'minicraft_save_v3',
+        SAVE_KEY: 'minicraft_save_v4',  // 升级版本号，旧存档失效
         FIXED_DT: 1 / 60,
         LONG_PRESS_MS: 450, MOVE_THRESHOLD: 25, SWEEP_STEP: 0.05,
+        PITCH_LIMIT: 1.5,
     };
 
-    // ==========================================================
-    // 纹理
-    // ==========================================================
     function makeBlockTexture(hexColor) {
         const canvas = document.createElement('canvas');
         canvas.width = 16; canvas.height = 16;
@@ -114,91 +109,58 @@
             const x = (Math.random() * 16) | 0;
             const y = (Math.random() * 16) | 0;
             const a = (Math.random() * 0.35).toFixed(2);
-            ctx.fillStyle = Math.random() > 0.5
-                ? `rgba(0,0,0,${a})`
-                : `rgba(255,255,255,${a})`;
+            ctx.fillStyle = Math.random() > 0.5 ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a})`;
             ctx.fillRect(x, y, 1, 1);
         }
         ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-        ctx.lineWidth = 1;
         ctx.strokeRect(0.5, 0.5, 15, 15);
         const tex = new THREE.CanvasTexture(canvas);
         tex.magFilter = THREE.NearestFilter;
         tex.minFilter = THREE.NearestFilter;
-        tex.anisotropy = 1;
         return tex;
     }
 
     const BLOCK_GEOMETRY = new THREE.BoxGeometry(1, 1, 1);
     const BLOCK_MATERIALS = {};
     for (const k in BLOCK_CONFIG) {
-        BLOCK_MATERIALS[k] = new THREE.MeshLambertMaterial({
-            map: makeBlockTexture(BLOCK_CONFIG[k].color),
-        });
+        BLOCK_MATERIALS[k] = new THREE.MeshLambertMaterial({ map: makeBlockTexture(BLOCK_CONFIG[k].color) });
     }
 
-    // ==========================================================
     // 3D 噪声
-    // ==========================================================
     function hash3(x, y, z) {
         let n = x * 374761393 + y * 668265263 + z * 1274126177;
         n = (n ^ (n >> 13)) * 1274126177;
         return ((n ^ (n >> 16)) >>> 0) / 4294967295;
     }
-
-    function smooth(t) { return t * t * (3 - 2 * t); }
-
+    const smooth = t => t * t * (3 - 2 * t);
     function noise3(x, y, z) {
         const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
-        const xf = x - xi, yf = y - yi, zf = z - zi;
-        const u = smooth(xf), v = smooth(yf), w = smooth(zf);
-
-        const c000 = hash3(xi, yi, zi);
-        const c100 = hash3(xi + 1, yi, zi);
-        const c010 = hash3(xi, yi + 1, zi);
-        const c110 = hash3(xi + 1, yi + 1, zi);
-        const c001 = hash3(xi, yi, zi + 1);
-        const c101 = hash3(xi + 1, yi, zi + 1);
-        const c011 = hash3(xi, yi + 1, zi + 1);
-        const c111 = hash3(xi + 1, yi + 1, zi + 1);
-
-        const x00 = c000 * (1 - u) + c100 * u;
-        const x10 = c010 * (1 - u) + c110 * u;
-        const x01 = c001 * (1 - u) + c101 * u;
-        const x11 = c011 * (1 - u) + c111 * u;
-
-        const y0 = x00 * (1 - v) + x10 * v;
-        const y1 = x01 * (1 - v) + x11 * v;
-
-        return y0 * (1 - w) + y1 * w;
+        const u = smooth(x - xi), v = smooth(y - yi), w = smooth(z - zi);
+        const c000 = hash3(xi, yi, zi),     c100 = hash3(xi+1, yi, zi);
+        const c010 = hash3(xi, yi+1, zi),   c110 = hash3(xi+1, yi+1, zi);
+        const c001 = hash3(xi, yi, zi+1),   c101 = hash3(xi+1, yi, zi+1);
+        const c011 = hash3(xi, yi+1, zi+1), c111 = hash3(xi+1, yi+1, zi+1);
+        const x00 = c000*(1-u) + c100*u, x10 = c010*(1-u) + c110*u;
+        const x01 = c001*(1-u) + c101*u, x11 = c011*(1-u) + c111*u;
+        const y0 = x00*(1-v) + x10*v, y1 = x01*(1-v) + x11*v;
+        return y0*(1-w) + y1*w;
     }
 
-    // ==========================================================
-    // 地形
-    // ==========================================================
     function terrainHeight(x, z) {
         return Math.round(
-            Math.sin(x * 0.15) * 1.3 +
-            Math.cos(z * 0.18) * 1.1 +
-            Math.sin((x + z) * 0.10) * 0.9 +
-            Math.cos((x - z) * 0.13) * 0.7 +
-            Math.sin(x * 0.05) * 1.8 +
-            Math.cos(z * 0.07) * 1.4
+            Math.sin(x * 0.15) * 1.3 + Math.cos(z * 0.18) * 1.1 +
+            Math.sin((x + z) * 0.10) * 0.9 + Math.cos((x - z) * 0.13) * 0.7 +
+            Math.sin(x * 0.05) * 1.8 + Math.cos(z * 0.07) * 1.4
         );
     }
 
     function isCave(x, y, z) {
         if (y >= terrainHeight(x, z) - 2) return false;
         if (y < CONST.CAVE_DEPTH_LIMIT) return false;
-
         const n1 = noise3(x * 0.09, y * 0.14, z * 0.09);
         const n2 = noise3(x * 0.18 + 50, y * 0.22 + 50, z * 0.18 + 50) * 0.5;
-        const total = n1 + n2;
-
         const depth = terrainHeight(x, z) - y;
-        const depthBonus = Math.min(depth / 20, 0.15);
-
-        return total + depthBonus > 0.75;
+        return n1 + n2 + Math.min(depth / 20, 0.15) > 0.75;
     }
 
     function generateBlock(x, y, z) {
@@ -212,34 +174,24 @@
         return null;
     }
 
-    // ==========================================================
-    // 世界数据
-    // ==========================================================
     const modifications = new Map();
     const worldKey = (x, y, z) => `${x},${y},${z}`;
-
-    function getBlockType(x, y, z) {
+    const getBlockType = (x, y, z) => {
         const k = worldKey(x, y, z);
-        if (modifications.has(k)) return modifications.get(k);
-        return generateBlock(x, y, z);
-    }
+        return modifications.has(k) ? modifications.get(k) : generateBlock(x, y, z);
+    };
+    const isSolid = (x, y, z) => getBlockType(x, y, z) !== null;
+    const setBlock = (x, y, z, type) => modifications.set(worldKey(x, y, z), type);
 
-    function isSolid(x, y, z) {
-        return getBlockType(x, y, z) !== null;
-    }
-
-    function setBlock(x, y, z, type) {
-        modifications.set(worldKey(x, y, z), type);
-    }
-
-    // ==========================================================
     // 场景
-    // ==========================================================
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87CEEB);
     scene.fog = new THREE.Fog(0x87CEEB, 20, 55);
 
     const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 200);
+    camera.up.set(0, 1, 0);  // ★ 强制 up 向量
+    camera.rotation.order = 'YXZ';
+
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(innerWidth, innerHeight);
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -254,9 +206,7 @@
     fill.position.set(-30, -20, -30);
     scene.add(fill);
 
-    // ==========================================================
-    // 动态渲染
-    // ==========================================================
+    // 渲染
     const renderedMeshes = new Map();
 
     function addMeshAt(x, y, z, type) {
@@ -274,10 +224,7 @@
     function removeMeshAt(x, y, z) {
         const k = worldKey(x, y, z);
         const mesh = renderedMeshes.get(k);
-        if (mesh) {
-            scene.remove(mesh);
-            renderedMeshes.delete(k);
-        }
+        if (mesh) { scene.remove(mesh); renderedMeshes.delete(k); }
     }
 
     function updateRender() {
@@ -285,16 +232,13 @@
         const cz = Math.floor(player.pos.z);
         const cy = Math.floor(player.pos.y);
         const needed = new Set();
-
         const yMinGlobal = Math.max(CONST.CAVE_DEPTH_LIMIT - 2, cy - 10);
         const yMaxGlobal = cy + 10;
 
         for (let dx = -CONST.RENDER_RADIUS; dx <= CONST.RENDER_RADIUS; dx++) {
             for (let dz = -CONST.RENDER_RADIUS; dz <= CONST.RENDER_RADIUS; dz++) {
-                const x = cx + dx;
-                const z = cz + dz;
+                const x = cx + dx, z = cz + dz;
                 const h = terrainHeight(x, z);
-
                 for (let y = h; y >= h - 4; y--) {
                     const k = worldKey(x, y, z);
                     const type = getBlockType(x, y, z);
@@ -303,7 +247,6 @@
                         if (!renderedMeshes.has(k)) addMeshAt(x, y, z, type);
                     }
                 }
-
                 const yTop = Math.min(h - 5, yMaxGlobal);
                 const yBot = Math.max(CONST.CAVE_DEPTH_LIMIT - 2, yMinGlobal);
                 for (let y = yTop; y >= yBot; y--) {
@@ -317,7 +260,6 @@
                 }
             }
         }
-
         for (const [k, type] of modifications) {
             if (type === null) continue;
             const [x, y, z] = k.split(',').map(Number);
@@ -326,7 +268,6 @@
                 if (!renderedMeshes.has(k)) addMeshAt(x, y, z, type);
             }
         }
-
         for (const k of [...renderedMeshes.keys()]) {
             if (!needed.has(k)) {
                 scene.remove(renderedMeshes.get(k));
@@ -335,38 +276,28 @@
         }
     }
 
-    // ==========================================================
     // 玩家
-    // ==========================================================
     const spawnH = terrainHeight(0, 0);
     const player = {
         pos: new THREE.Vector3(0.5, spawnH + 2, 0.5),
         yaw: 0, pitch: -0.3, vy: 0, onGround: false,
     };
 
-    // ==========================================================
     // 碰撞
-    // ==========================================================
     function isColliding(pos) {
-        const minX = pos.x - CONST.PLAYER_W / 2;
-        const maxX = pos.x + CONST.PLAYER_W / 2;
-        const minY = pos.y;
-        const maxY = pos.y + CONST.PLAYER_H;
-        const minZ = pos.z - CONST.PLAYER_W / 2;
-        const maxZ = pos.z + CONST.PLAYER_W / 2;
-
+        const minX = pos.x - CONST.PLAYER_W / 2, maxX = pos.x + CONST.PLAYER_W / 2;
+        const minY = pos.y, maxY = pos.y + CONST.PLAYER_H;
+        const minZ = pos.z - CONST.PLAYER_W / 2, maxZ = pos.z + CONST.PLAYER_W / 2;
         const x0 = Math.floor(minX), x1 = Math.floor(maxX);
         const y0 = Math.floor(minY), y1 = Math.floor(maxY);
         const z0 = Math.floor(minZ), z1 = Math.floor(maxZ);
-
         for (let x = x0; x <= x1; x++)
             for (let y = y0; y <= y1; y++)
                 for (let z = z0; z <= z1; z++)
                     if (isSolid(x, y, z) &&
                         maxX > x && minX < x + 1 &&
                         maxY > y && minY < y + 1 &&
-                        maxZ > z && minZ < z + 1)
-                        return true;
+                        maxZ > z && minZ < z + 1) return true;
         return false;
     }
 
@@ -376,7 +307,6 @@
         const x1 = Math.floor(pos.x + halfW - 0.001);
         const z0 = Math.floor(pos.z - halfW + 0.001);
         const z1 = Math.floor(pos.z + halfW - 0.001);
-
         let highest = -Infinity;
         for (let x = x0; x <= x1; x++) {
             for (let z = z0; z <= z1; z++) {
@@ -409,9 +339,7 @@
         return false;
     }
 
-    // ==========================================================
     // 射线
-    // ==========================================================
     const raycaster = new THREE.Raycaster();
     raycaster.far = 6;
 
@@ -428,9 +356,7 @@
         return { block: h.object.userData, normal: h.face.normal.clone() };
     }
 
-    // ==========================================================
     // 放置 / 破坏
-    // ==========================================================
     let lastAction = '初始化';
     const flash = msg => { lastAction = msg; };
 
@@ -440,21 +366,12 @@
         const { x, y, z } = hit.block;
         const n = hit.normal;
         const tx = x + n.x, ty = y + n.y, tz = z + n.z;
-
         if (isSolid(tx, ty, tz)) return flash('放 ✗ 已占用');
-
-        const pMinX = player.pos.x - CONST.PLAYER_W / 2;
-        const pMaxX = player.pos.x + CONST.PLAYER_W / 2;
-        const pMinY = player.pos.y;
-        const pMaxY = player.pos.y + CONST.PLAYER_H;
-        const pMinZ = player.pos.z - CONST.PLAYER_W / 2;
-        const pMaxZ = player.pos.z + CONST.PLAYER_W / 2;
-
-        if (pMaxX > tx && pMinX < tx + 1 &&
-            pMaxY > ty && pMinY < ty + 1 &&
-            pMaxZ > tz && pMinZ < tz + 1)
+        const pMinX = player.pos.x - CONST.PLAYER_W / 2, pMaxX = player.pos.x + CONST.PLAYER_W / 2;
+        const pMinY = player.pos.y, pMaxY = player.pos.y + CONST.PLAYER_H;
+        const pMinZ = player.pos.z - CONST.PLAYER_W / 2, pMaxZ = player.pos.z + CONST.PLAYER_W / 2;
+        if (pMaxX > tx && pMinX < tx + 1 && pMaxY > ty && pMinY < ty + 1 && pMaxZ > tz && pMinZ < tz + 1)
             return flash('放 ✗ 卡住自己');
-
         setBlock(tx, ty, tz, currentBlock);
         addMeshAt(tx, ty, tz, currentBlock);
         flash(`放 ✓ ${tx},${ty},${tz}`);
@@ -465,22 +382,16 @@
         const hit = raycast();
         if (!hit) return flash('挖 ✗ 没对准');
         const { x, y, z } = hit.block;
-
-        const footX = Math.floor(player.pos.x);
-        const footZ = Math.floor(player.pos.z);
+        const footX = Math.floor(player.pos.x), footZ = Math.floor(player.pos.z);
         const footY = Math.floor(player.pos.y - 0.05);
-        if (x === footX && y === footY && z === footZ)
-            return flash('挖 ✗ 不能挖脚下');
-
+        if (x === footX && y === footY && z === footZ) return flash('挖 ✗ 不能挖脚下');
         setBlock(x, y, z, null);
         removeMeshAt(x, y, z);
         flash(`挖 ✓ ${x},${y},${z}`);
         scheduleSave();
     }
 
-    // ==========================================================
     // 存档
-    // ==========================================================
     let saveTimer = null;
     function scheduleSave() {
         if (saveTimer) clearTimeout(saveTimer);
@@ -507,11 +418,24 @@
             const data = JSON.parse(raw);
             if (data.modifications) for (const [k, v] of data.modifications) modifications.set(k, v);
             if (data.player) {
-                player.pos.set(data.player.x, data.player.y, data.player.z);
-                player.yaw = data.player.yaw || 0;
-                player.pitch = data.player.pitch || 0;
+                // ★ 强制数值校验 + clamp
+                const px = Number(data.player.x);
+                const py = Number(data.player.y);
+                const pz = Number(data.player.z);
+                const pyaw = Number(data.player.yaw);
+                const ppitch = Number(data.player.pitch);
+                player.pos.set(
+                    Number.isFinite(px) ? px : 0.5,
+                    Number.isFinite(py) ? py : spawnH + 2,
+                    Number.isFinite(pz) ? pz : 0.5
+                );
+                player.yaw = Number.isFinite(pyaw) ? pyaw : 0;
+                // ★ 关键：pitch 严格 clamp 到 [-1.5, 1.5]
+                player.pitch = Number.isFinite(ppitch)
+                    ? Math.max(-CONST.PITCH_LIMIT, Math.min(CONST.PITCH_LIMIT, ppitch))
+                    : -0.3;
             }
-            if (data.currentBlock) currentBlock = data.currentBlock;
+            if (data.currentBlock && BLOCK_CONFIG[data.currentBlock]) currentBlock = data.currentBlock;
             return true;
         } catch (e) { return false; }
     }
@@ -531,9 +455,7 @@
         flash('✓ 世界已重置');
     }
 
-    // ==========================================================
     // 输入
-    // ==========================================================
     let moveInput = { x: 0, y: 0 };
     let jumpRequested = false;
     let currentBlock = 'grass';
@@ -554,8 +476,7 @@
     let joyCenter = { x: 0, y: 0 };
 
     function joyMove(x, y) {
-        const dx = x - joyCenter.x;
-        const dy = y - joyCenter.y;
+        const dx = x - joyCenter.x, dy = y - joyCenter.y;
         const dist = Math.hypot(dx, dy);
         const maxDist = 50;
         const clamped = Math.min(dist, maxDist);
@@ -573,8 +494,7 @@
     }
 
     const pointInCircle = (x, y, r) => {
-        const cx = r.left + r.width / 2;
-        const cy = r.top + r.height / 2;
+        const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
         return Math.hypot(x - cx, y - cy) <= Math.min(r.width, r.height) / 2;
     };
     const pointInRect = (x, y, r) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
@@ -594,25 +514,20 @@
 
     document.addEventListener('touchstart', e => {
         const ui = getUIElements();
-
         for (const t of e.changedTouches) {
             const x = t.clientX, y = t.clientY;
-
             if (pointInRect(x, y, ui.reset)) {
                 if (confirm('确定清空存档并重新生成世界？')) resetWorld();
                 activeTouches.set(t.identifier, { type: 'reset' });
                 continue;
             }
             if (pointInCircle(x, y, ui.jump)) {
-                jumpRequested = true;
-                flash('跳');
+                jumpRequested = true; flash('跳');
                 activeTouches.set(t.identifier, { type: 'jump' });
                 continue;
             }
             let slotHit = null;
-            for (const s of ui.slots) {
-                if (pointInCircle(x, y, s.rect)) { slotHit = s; break; }
-            }
+            for (const s of ui.slots) if (pointInCircle(x, y, s.rect)) { slotHit = s; break; }
             if (slotHit) {
                 document.querySelectorAll('.block-slot').forEach(s => s.classList.remove('selected'));
                 slotHit.el.classList.add('selected');
@@ -628,7 +543,6 @@
                 activeTouches.set(t.identifier, { type: 'joystick' });
                 continue;
             }
-
             const state = {
                 type: 'empty', startX: x, startY: y, lastX: x, lastY: y,
                 moved: false, longPressFired: false, longPressTimer: null,
@@ -637,8 +551,7 @@
                 if (!state.moved) {
                     state.longPressFired = true;
                     tryBreak();
-                    hint.style.left = x + 'px';
-                    hint.style.top = y + 'px';
+                    hint.style.left = x + 'px'; hint.style.top = y + 'px';
                     hint.classList.add('active');
                     setTimeout(() => hint.classList.remove('active'), 150);
                 }
@@ -652,12 +565,10 @@
         for (const t of e.changedTouches) {
             const info = activeTouches.get(t.identifier);
             if (!info) continue;
-
             if (info.type === 'joystick') {
                 joyMove(t.clientX, t.clientY);
             } else if (info.type === 'empty') {
-                const dx = t.clientX - info.lastX;
-                const dy = t.clientY - info.lastY;
+                const dx = t.clientX - info.lastX, dy = t.clientY - info.lastY;
                 const totalMove = Math.hypot(t.clientX - info.startX, t.clientY - info.startY);
                 if (totalMove > CONST.MOVE_THRESHOLD) {
                     info.moved = true;
@@ -665,10 +576,10 @@
                 }
                 if (info.moved) {
                     player.yaw -= dx * 0.005;
-                    player.pitch = Math.max(-1.5, Math.min(1.5, player.pitch - dy * 0.005));
+                    // ★ pitch 严格 clamp
+                    player.pitch = Math.max(-CONST.PITCH_LIMIT, Math.min(CONST.PITCH_LIMIT, player.pitch - dy * 0.005));
                 }
-                info.lastX = t.clientX;
-                info.lastY = t.clientY;
+                info.lastX = t.clientX; info.lastY = t.clientY;
             }
         }
         e.preventDefault();
@@ -697,9 +608,7 @@
         }
     });
 
-    // ==========================================================
     // 物理
-    // ==========================================================
     function physicsStep(dt) {
         const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
         const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
@@ -707,19 +616,15 @@
         move.addScaledVector(forward, -moveInput.y);
         move.addScaledVector(right, moveInput.x);
         if (move.length() > 1) move.normalize();
-
         sweepMove('x', move.x * CONST.MOVE_SPEED * dt);
         sweepMove('z', move.z * CONST.MOVE_SPEED * dt);
-
         if (jumpRequested && player.onGround) {
             player.vy = CONST.JUMP_SPEED;
             player.onGround = false;
         }
         jumpRequested = false;
-
         player.vy -= CONST.GRAVITY * dt;
         player.vy = Math.max(player.vy, -30);
-
         const hit = sweepMove('y', player.vy * dt);
         if (hit) {
             if (player.vy < 0) {
@@ -742,26 +647,22 @@
         }
     }
 
-    // ==========================================================
+    // ★★★ 相机更新：用四元数手动构造，绝对不会有 roll ★★★
+    const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
+    const _quat = new THREE.Quaternion();
+
+    function updateCamera() {
+        camera.up.set(0, 1, 0);  // 每帧重置 up
+        camera.position.set(player.pos.x, player.pos.y + CONST.EYE_H, player.pos.z);
+        _euler.set(player.pitch, player.yaw, 0, 'YXZ');
+        _quat.setFromEuler(_euler);
+        camera.quaternion.copy(_quat);
+    }
+
     // 主循环
-    // ==========================================================
     let lastTime = performance.now();
     let accumulator = 0;
     let fpsTimer = 0, fpsCount = 0, renderTimer = 0, hudTimer = 0;
-
-    function updateCamera() {
-        // ★ 修复：用 lookAt 替代 euler rotation，彻底避免 roll 畸变
-        const eyeX = player.pos.x;
-        const eyeY = player.pos.y + CONST.EYE_H;
-        const eyeZ = player.pos.z;
-        camera.position.set(eyeX, eyeY, eyeZ);
-
-        const dirX = -Math.sin(player.yaw) * Math.cos(player.pitch);
-        const dirY = Math.sin(player.pitch);
-        const dirZ = -Math.cos(player.yaw) * Math.cos(player.pitch);
-
-        camera.lookAt(eyeX + dirX, eyeY + dirY, eyeZ + dirZ);
-    }
 
     function update() {
         const now = performance.now();
@@ -779,15 +680,11 @@
         if (player.pos.y < -40) {
             const sh = terrainHeight(0, 0);
             player.pos.set(0.5, sh + 2, 0.5);
-            player.vy = 0;
-            player.onGround = false;
+            player.vy = 0; player.onGround = false;
         }
 
         renderTimer += frameTime;
-        if (renderTimer > 0.15) {
-            renderTimer = 0;
-            updateRender();
-        }
+        if (renderTimer > 0.15) { renderTimer = 0; updateRender(); }
 
         updateCamera();
         renderer.render(scene, camera);
@@ -797,8 +694,8 @@
             hud.innerHTML =
                 `FPS: ${Math.round(fpsCount / fpsTimer)}<br>` +
                 `位置: ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}<br>` +
-                `状态: ${player.onGround ? '着地' : '空中'} | 方块: ${renderedMeshes.size}<br>` +
-                `操作: ${lastAction}`;
+                `视角: yaw=${player.yaw.toFixed(2)}, pitch=${player.pitch.toFixed(2)}<br>` +
+                `状态: ${player.onGround ? '着地' : '空中'} | 方块: ${renderedMeshes.size}`;
             fpsCount = 0; fpsTimer = 0; hudTimer = 0;
         }
 
