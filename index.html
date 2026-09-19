@@ -20,7 +20,7 @@
             box-shadow: 0 0 2px black;
         }
         #crosshair::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
-        #crosshair::after { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+        #crosshair::after { top: 50%; left: 0; width: 100%; height: 2px; transform: translateY(-50%); }
         .ui-element { z-index: 100; pointer-events: none; }
         #joystick {
             position: fixed; left: 30px; bottom: 40px;
@@ -88,25 +88,21 @@
         grass: { name: '草方块', color: '#5fa845' },
         dirt:  { name: '泥土',   color: '#8b5a2b' },
         stone: { name: '石头',   color: '#888888' },
+        wood:  { name: '木头',   color: '#6b4423' },
     };
 
     const CONST = {
-        GRAVITY: 22,
-        JUMP_SPEED: 8.5,
-        MOVE_SPEED: 6,
-        PLAYER_W: 0.6,
-        PLAYER_H: 1.8,
-        EYE_H: 1.6,
+        GRAVITY: 22, JUMP_SPEED: 8.5, MOVE_SPEED: 6,
+        PLAYER_W: 0.6, PLAYER_H: 1.8, EYE_H: 1.6,
         RENDER_RADIUS: 9,
-        SAVE_KEY: 'minicraft_save_v2',
+        CAVE_DEPTH_LIMIT: -12,   // 洞穴最深到 y=-12
+        SAVE_KEY: 'minicraft_save_v3',  // 版本号升级，旧存档会失效
         FIXED_DT: 1 / 60,
-        LONG_PRESS_MS: 450,
-        MOVE_THRESHOLD: 25,
-        SWEEP_STEP: 0.05,
+        LONG_PRESS_MS: 450, MOVE_THRESHOLD: 25, SWEEP_STEP: 0.05,
     };
 
     // ==========================================================
-    // 纹理生成（黑边直接画进纹理，不再用 LineSegments）
+    // 纹理
     // ==========================================================
     function makeBlockTexture(hexColor) {
         const canvas = document.createElement('canvas');
@@ -114,7 +110,6 @@
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = hexColor;
         ctx.fillRect(0, 0, 16, 16);
-        // 随机噪点
         for (let i = 0; i < 100; i++) {
             const x = (Math.random() * 16) | 0;
             const y = (Math.random() * 16) | 0;
@@ -124,7 +119,6 @@
                 : `rgba(255,255,255,${a})`;
             ctx.fillRect(x, y, 1, 1);
         }
-        // 边缘黑线（替代 LineSegments）
         ctx.strokeStyle = 'rgba(0,0,0,0.35)';
         ctx.lineWidth = 1;
         ctx.strokeRect(0.5, 0.5, 15, 15);
@@ -144,7 +138,43 @@
     }
 
     // ==========================================================
-    // 地形
+    // 3D 噪声（洞穴系统核心）
+    // ==========================================================
+    function hash3(x, y, z) {
+        let n = x * 374761393 + y * 668265263 + z * 1274126177;
+        n = (n ^ (n >> 13)) * 1274126177;
+        return ((n ^ (n >> 16)) >>> 0) / 4294967295;
+    }
+
+    function smooth(t) { return t * t * (3 - 2 * t); }
+
+    function noise3(x, y, z) {
+        const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+        const xf = x - xi, yf = y - yi, zf = z - zi;
+        const u = smooth(xf), v = smooth(yf), w = smooth(zf);
+
+        const c000 = hash3(xi, yi, zi);
+        const c100 = hash3(xi + 1, yi, zi);
+        const c010 = hash3(xi, yi + 1, zi);
+        const c110 = hash3(xi + 1, yi + 1, zi);
+        const c001 = hash3(xi, yi, zi + 1);
+        const c101 = hash3(xi + 1, yi, zi + 1);
+        const c011 = hash3(xi, yi + 1, zi + 1);
+        const c111 = hash3(xi + 1, yi + 1, zi + 1);
+
+        const x00 = c000 * (1 - u) + c100 * u;
+        const x10 = c010 * (1 - u) + c110 * u;
+        const x01 = c001 * (1 - u) + c101 * u;
+        const x11 = c011 * (1 - u) + c111 * u;
+
+        const y0 = x00 * (1 - v) + x10 * v;
+        const y1 = x01 * (1 - v) + x11 * v;
+
+        return y0 * (1 - w) + y1 * w;
+    }
+
+    // ==========================================================
+    // 地形生成
     // ==========================================================
     function terrainHeight(x, z) {
         return Math.round(
@@ -157,11 +187,34 @@
         );
     }
 
+    // 洞穴判定：用两层 3D 噪声叠加
+    function isCave(x, y, z) {
+        if (y >= terrainHeight(x, z) - 2) return false;  // 地表 2 层完整
+        if (y < CONST.CAVE_DEPTH_LIMIT) return false;
+
+        // 两层不同频率的 3D 噪声，制造复杂的洞道
+        const n1 = noise3(x * 0.09, y * 0.14, z * 0.09);
+        const n2 = noise3(x * 0.18 + 50, y * 0.22 + 50, z * 0.18 + 50) * 0.5;
+        const total = n1 + n2;
+
+        // 越靠近地表，洞穴越难生成（避免地表塌陷）
+        const depth = terrainHeight(x, z) - y;
+        const depthBonus = Math.min(depth / 20, 0.15);
+
+        return total + depthBonus > 0.75;
+    }
+
     function generateBlock(x, y, z) {
         const h = terrainHeight(x, z);
+        if (y > h) return null;
+
+        // 洞穴（只在地下且远离地表）
+        if (y < h - 2 && isCave(x, y, z)) return null;
+
         if (y === h) return 'grass';
         if (y === h - 1) return 'dirt';
-        if (y >= h - 3 && y < h - 1) return 'stone';
+        if (y >= h - 4) return 'stone';
+        if (y >= CONST.CAVE_DEPTH_LIMIT - 2) return 'stone';
         return null;
     }
 
@@ -190,19 +243,23 @@
     // ==========================================================
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87CEEB);
-    scene.fog = new THREE.Fog(0x87CEEB, 25, 65);
+    scene.fog = new THREE.Fog(0x87CEEB, 20, 55);
 
-    const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 250);
+    const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 200);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(innerWidth, innerHeight);
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.domElement.style.cssText = 'position:fixed;top:0;left:0;z-index:1;';
     document.body.appendChild(renderer.domElement);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-    const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
     sun.position.set(30, 50, 30);
     scene.add(sun);
+    // 从下方补一点光，避免洞穴完全漆黑
+    const fill = new THREE.DirectionalLight(0xffffff, 0.2);
+    fill.position.set(-30, -20, -30);
+    scene.add(fill);
 
     // ==========================================================
     // 动态渲染
@@ -215,7 +272,6 @@
         const mesh = new THREE.Mesh(BLOCK_GEOMETRY, BLOCK_MATERIALS[type]);
         mesh.position.set(x + 0.5, y + 0.5, z + 0.5);
         mesh.userData = { x, y, z, type };
-        // ★ 优化：静态方块不需要每帧重算矩阵
         mesh.matrixAutoUpdate = false;
         mesh.updateMatrix();
         scene.add(mesh);
@@ -234,24 +290,35 @@
     function updateRender() {
         const cx = Math.floor(player.pos.x);
         const cz = Math.floor(player.pos.z);
+        const cy = Math.floor(player.pos.y);
         const needed = new Set();
 
-        // 程序化地形：每列 3-4 个方块
+        const yMinGlobal = Math.max(CONST.CAVE_DEPTH_LIMIT - 2, cy - 10);
+        const yMaxGlobal = cy + 10;
+
         for (let dx = -CONST.RENDER_RADIUS; dx <= CONST.RENDER_RADIUS; dx++) {
             for (let dz = -CONST.RENDER_RADIUS; dz <= CONST.RENDER_RADIUS; dz++) {
                 const x = cx + dx;
                 const z = cz + dz;
                 const h = terrainHeight(x, z);
-                for (let y = h - 3; y <= h; y++) {
+
+                // 地表（h-4 到 h，永远渲染）
+                for (let y = h; y >= h - 4; y--) {
                     const k = worldKey(x, y, z);
-                    if (modifications.has(k)) {
-                        const t = modifications.get(k);
-                        if (t === null) continue;
+                    const type = getBlockType(x, y, z);
+                    if (type !== null) {
                         needed.add(k);
-                        if (!renderedMeshes.has(k)) addMeshAt(x, y, z, t);
-                        continue;
+                        if (!renderedMeshes.has(k)) addMeshAt(x, y, z, type);
                     }
-                    const type = generateBlock(x, y, z);
+                }
+
+                // 地下（只渲染玩家附近 y 范围）
+                const yTop = Math.min(h - 5, yMaxGlobal);
+                const yBot = Math.max(CONST.CAVE_DEPTH_LIMIT - 2, yMinGlobal);
+                for (let y = yTop; y >= yBot; y--) {
+                    const k = worldKey(x, y, z);
+                    if (needed.has(k)) continue;
+                    const type = getBlockType(x, y, z);
                     if (type !== null) {
                         needed.add(k);
                         if (!renderedMeshes.has(k)) addMeshAt(x, y, z, type);
@@ -260,7 +327,7 @@
             }
         }
 
-        // 玩家修改的方块（任意高度）
+        // 玩家修改的方块
         for (const [k, type] of modifications) {
             if (type === null) continue;
             const [x, y, z] = k.split(',').map(Number);
@@ -324,7 +391,7 @@
         let highest = -Infinity;
         for (let x = x0; x <= x1; x++) {
             for (let z = z0; z <= z1; z++) {
-                for (let y = Math.floor(pos.y + CONST.PLAYER_H); y >= -30; y--) {
+                for (let y = Math.floor(pos.y + CONST.PLAYER_H); y >= CONST.CAVE_DEPTH_LIMIT - 5; y--) {
                     if (isSolid(x, y, z)) {
                         if (y + 1 > highest) highest = y + 1;
                         break;
@@ -380,12 +447,12 @@
 
     function tryPlace() {
         const hit = raycast();
-        if (!hit) return flash('放 ✗ 准星没对准方块');
+        if (!hit) return flash('放 ✗ 没对准');
         const { x, y, z } = hit.block;
         const n = hit.normal;
         const tx = x + n.x, ty = y + n.y, tz = z + n.z;
 
-        if (isSolid(tx, ty, tz)) return flash('放 ✗ 位置已占用');
+        if (isSolid(tx, ty, tz)) return flash('放 ✗ 已占用');
 
         const pMinX = player.pos.x - CONST.PLAYER_W / 2;
         const pMaxX = player.pos.x + CONST.PLAYER_W / 2;
@@ -397,7 +464,7 @@
         if (pMaxX > tx && pMinX < tx + 1 &&
             pMaxY > ty && pMinY < ty + 1 &&
             pMaxZ > tz && pMinZ < tz + 1)
-            return flash('放 ✗ 会卡住自己');
+            return flash('放 ✗ 卡住自己');
 
         setBlock(tx, ty, tz, currentBlock);
         addMeshAt(tx, ty, tz, currentBlock);
@@ -407,7 +474,7 @@
 
     function tryBreak() {
         const hit = raycast();
-        if (!hit) return flash('挖 ✗ 准星没对准方块');
+        if (!hit) return flash('挖 ✗ 没对准');
         const { x, y, z } = hit.block;
 
         const footX = Math.floor(player.pos.x);
@@ -441,9 +508,7 @@
                 },
                 currentBlock,
             }));
-        } catch (e) {
-            console.warn('存档失败', e);
-        }
+        } catch (e) { console.warn('存档失败', e); }
     }
 
     function load() {
@@ -459,10 +524,7 @@
             }
             if (data.currentBlock) currentBlock = data.currentBlock;
             return true;
-        } catch (e) {
-            console.warn('读档失败', e);
-            return false;
-        }
+        } catch (e) { return false; }
     }
 
     function resetWorld() {
@@ -526,9 +588,7 @@
         const cy = r.top + r.height / 2;
         return Math.hypot(x - cx, y - cy) <= Math.min(r.width, r.height) / 2;
     };
-
-    const pointInRect = (x, y, r) =>
-        x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    const pointInRect = (x, y, r) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
 
     function getUIElements() {
         return {
@@ -581,8 +641,7 @@
             }
 
             const state = {
-                type: 'empty',
-                startX: x, startY: y, lastX: x, lastY: y,
+                type: 'empty', startX: x, startY: y, lastX: x, lastY: y,
                 moved: false, longPressFired: false, longPressTimer: null,
             };
             state.longPressTimer = setTimeout(() => {
@@ -611,13 +670,9 @@
                 const dx = t.clientX - info.lastX;
                 const dy = t.clientY - info.lastY;
                 const totalMove = Math.hypot(t.clientX - info.startX, t.clientY - info.startY);
-
                 if (totalMove > CONST.MOVE_THRESHOLD) {
                     info.moved = true;
-                    if (info.longPressTimer) {
-                        clearTimeout(info.longPressTimer);
-                        info.longPressTimer = null;
-                    }
+                    if (info.longPressTimer) { clearTimeout(info.longPressTimer); info.longPressTimer = null; }
                 }
                 if (info.moved) {
                     player.yaw -= dx * 0.005;
@@ -634,7 +689,6 @@
         for (const t of e.changedTouches) {
             const info = activeTouches.get(t.identifier);
             if (!info) continue;
-
             if (info.type === 'joystick') joyEnd();
             else if (info.type === 'empty') {
                 if (info.longPressTimer) clearTimeout(info.longPressTimer);
@@ -711,7 +765,6 @@
         const frameTime = Math.min((now - lastTime) / 1000, 0.1);
         lastTime = now;
 
-        // 固定步长物理
         accumulator += frameTime;
         let steps = 0;
         while (accumulator >= CONST.FIXED_DT && steps < 5) {
@@ -720,7 +773,6 @@
             steps++;
         }
 
-        // 掉出世界重生
         if (player.pos.y < -40) {
             const sh = terrainHeight(0, 0);
             player.pos.set(0.5, sh + 2, 0.5);
@@ -728,31 +780,24 @@
             player.onGround = false;
         }
 
-        // 动态加载
         renderTimer += frameTime;
         if (renderTimer > 0.15) {
             renderTimer = 0;
             updateRender();
         }
 
-        // 相机
         camera.position.set(player.pos.x, player.pos.y + CONST.EYE_H, player.pos.z);
         camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
         renderer.render(scene, camera);
 
-        // HUD 每 0.5 秒更新一次
-        fpsCount++;
-        fpsTimer += frameTime;
-        hudTimer += frameTime;
+        fpsCount++; fpsTimer += frameTime; hudTimer += frameTime;
         if (hudTimer >= 0.5) {
             hud.innerHTML =
                 `FPS: ${Math.round(fpsCount / fpsTimer)}<br>` +
                 `位置: ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}<br>` +
                 `状态: ${player.onGround ? '着地' : '空中'} | 方块: ${renderedMeshes.size}<br>` +
                 `操作: ${lastAction}`;
-            fpsCount = 0;
-            fpsTimer = 0;
-            hudTimer = 0;
+            fpsCount = 0; fpsTimer = 0; hudTimer = 0;
         }
 
         requestAnimationFrame(update);
@@ -765,7 +810,6 @@
     });
     window.addEventListener('beforeunload', save);
 
-    // 启动
     if (load()) flash('✓ 已读取存档');
     updateRender();
     update();
