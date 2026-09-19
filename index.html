@@ -95,8 +95,8 @@
         GRAVITY: 22, JUMP_SPEED: 8.5, MOVE_SPEED: 6,
         PLAYER_W: 0.6, PLAYER_H: 1.8, EYE_H: 1.6,
         RENDER_RADIUS: 9,
-        CAVE_DEPTH_LIMIT: -12,   // 洞穴最深到 y=-12
-        SAVE_KEY: 'minicraft_save_v3',  // 版本号升级，旧存档会失效
+        CAVE_DEPTH_LIMIT: -12,
+        SAVE_KEY: 'minicraft_save_v3',
         FIXED_DT: 1 / 60,
         LONG_PRESS_MS: 450, MOVE_THRESHOLD: 25, SWEEP_STEP: 0.05,
     };
@@ -138,7 +138,7 @@
     }
 
     // ==========================================================
-    // 3D 噪声（洞穴系统核心）
+    // 3D 噪声
     // ==========================================================
     function hash3(x, y, z) {
         let n = x * 374761393 + y * 668265263 + z * 1274126177;
@@ -174,7 +174,7 @@
     }
 
     // ==========================================================
-    // 地形生成
+    // 地形
     // ==========================================================
     function terrainHeight(x, z) {
         return Math.round(
@@ -187,17 +187,14 @@
         );
     }
 
-    // 洞穴判定：用两层 3D 噪声叠加
     function isCave(x, y, z) {
-        if (y >= terrainHeight(x, z) - 2) return false;  // 地表 2 层完整
+        if (y >= terrainHeight(x, z) - 2) return false;
         if (y < CONST.CAVE_DEPTH_LIMIT) return false;
 
-        // 两层不同频率的 3D 噪声，制造复杂的洞道
         const n1 = noise3(x * 0.09, y * 0.14, z * 0.09);
         const n2 = noise3(x * 0.18 + 50, y * 0.22 + 50, z * 0.18 + 50) * 0.5;
         const total = n1 + n2;
 
-        // 越靠近地表，洞穴越难生成（避免地表塌陷）
         const depth = terrainHeight(x, z) - y;
         const depthBonus = Math.min(depth / 20, 0.15);
 
@@ -207,10 +204,7 @@
     function generateBlock(x, y, z) {
         const h = terrainHeight(x, z);
         if (y > h) return null;
-
-        // 洞穴（只在地下且远离地表）
         if (y < h - 2 && isCave(x, y, z)) return null;
-
         if (y === h) return 'grass';
         if (y === h - 1) return 'dirt';
         if (y >= h - 4) return 'stone';
@@ -256,7 +250,6 @@
     const sun = new THREE.DirectionalLight(0xffffff, 0.8);
     sun.position.set(30, 50, 30);
     scene.add(sun);
-    // 从下方补一点光，避免洞穴完全漆黑
     const fill = new THREE.DirectionalLight(0xffffff, 0.2);
     fill.position.set(-30, -20, -30);
     scene.add(fill);
@@ -302,7 +295,6 @@
                 const z = cz + dz;
                 const h = terrainHeight(x, z);
 
-                // 地表（h-4 到 h，永远渲染）
                 for (let y = h; y >= h - 4; y--) {
                     const k = worldKey(x, y, z);
                     const type = getBlockType(x, y, z);
@@ -312,7 +304,6 @@
                     }
                 }
 
-                // 地下（只渲染玩家附近 y 范围）
                 const yTop = Math.min(h - 5, yMaxGlobal);
                 const yBot = Math.max(CONST.CAVE_DEPTH_LIMIT - 2, yMinGlobal);
                 for (let y = yTop; y >= yBot; y--) {
@@ -327,7 +318,6 @@
             }
         }
 
-        // 玩家修改的方块
         for (const [k, type] of modifications) {
             if (type === null) continue;
             const [x, y, z] = k.split(',').map(Number);
@@ -337,7 +327,6 @@
             }
         }
 
-        // 卸载
         for (const k of [...renderedMeshes.keys()]) {
             if (!needed.has(k)) {
                 scene.remove(renderedMeshes.get(k));
@@ -760,6 +749,20 @@
     let accumulator = 0;
     let fpsTimer = 0, fpsCount = 0, renderTimer = 0, hudTimer = 0;
 
+    function updateCamera() {
+        // ★ 修复：用 lookAt 替代 euler rotation，彻底避免 roll 畸变
+        const eyeX = player.pos.x;
+        const eyeY = player.pos.y + CONST.EYE_H;
+        const eyeZ = player.pos.z;
+        camera.position.set(eyeX, eyeY, eyeZ);
+
+        const dirX = -Math.sin(player.yaw) * Math.cos(player.pitch);
+        const dirY = Math.sin(player.pitch);
+        const dirZ = -Math.cos(player.yaw) * Math.cos(player.pitch);
+
+        camera.lookAt(eyeX + dirX, eyeY + dirY, eyeZ + dirZ);
+    }
+
     function update() {
         const now = performance.now();
         const frameTime = Math.min((now - lastTime) / 1000, 0.1);
@@ -786,8 +789,7 @@
             updateRender();
         }
 
-        camera.position.set(player.pos.x, player.pos.y + CONST.EYE_H, player.pos.z);
-        camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
+        updateCamera();
         renderer.render(scene, camera);
 
         fpsCount++; fpsTimer += frameTime; hudTimer += frameTime;
