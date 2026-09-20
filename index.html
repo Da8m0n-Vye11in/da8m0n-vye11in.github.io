@@ -5,79 +5,108 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>MiniCraft</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { width: 100%; height: 100%; overflow: hidden; background: #87CEEB;
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden; background: #87CEEB;
             -webkit-user-select: none; user-select: none; touch-action: none;
-            position: fixed; font-family: -apple-system, monospace; }
-        canvas { display: block; position: fixed; top: 0; left: 0; z-index: 1; }
-        #crosshair {
-            position: fixed; top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: 24px; height: 24px; pointer-events: none; z-index: 10;
+            position: fixed; font-family: ui-monospace, "Menlo", monospace;
         }
-        #crosshair::before, #crosshair::after {
-            content: ''; position: absolute; background: white;
-            box-shadow: 0 0 2px black;
+        #gameCanvas { display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        #hud {
+            position: fixed; top: 16px; left: 16px;
+            color: white; font-size: 11px; line-height: 1.55;
+            text-shadow: 1px 1px 2px black;
+            background: rgba(0,0,0,0.42); padding: 6px 10px; border-radius: 4px;
+            z-index: 100; pointer-events: none;
         }
-        #crosshair::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
-        #crosshair::after { top: 50%; left: 0; width: 100%; height: 2px; transform: translateY(-50%); }
-        .ui-element { z-index: 100; pointer-events: none; }
+        #hotbar {
+            position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 4px; padding: 4px;
+            background: rgba(0, 0, 0, 0.55);
+            border: 2px solid rgba(255, 255, 255, 0.35);
+            border-radius: 4px; z-index: 100; pointer-events: none;
+        }
+        .hotbar-slot {
+            width: 52px; height: 52px; border-radius: 2px;
+            background: rgba(80, 80, 80, 0.6);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+        }
+        .hotbar-slot.selected {
+            border: 3px solid #ffffff;
+            box-shadow: 0 0 8px rgba(255,255,255,0.8);
+        }
+        .hotbar-slot .label {
+            position: absolute; bottom: 1px; right: 3px;
+            font-size: 9px; color: rgba(255,255,255,0.85);
+        }
+        #topBar {
+            position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 6px; z-index: 100; pointer-events: none;
+        }
+        .mc-btn {
+            padding: 10px 16px;
+            background: rgba(0, 0, 0, 0.55);
+            border: 2px solid rgba(255, 255, 255, 0.35);
+            border-radius: 4px;
+            color: white; font-size: 13px; font-family: inherit;
+            white-space: nowrap;
+        }
         #joystick {
-            position: fixed; left: 30px; bottom: 40px;
-            width: 140px; height: 140px; border-radius: 50%;
-            background: rgba(255,255,255,0.28);
+            position: fixed; left: 30px; bottom: 100px;
+            width: 130px; height: 130px; border-radius: 50%;
+            background: rgba(255,255,255,0.22);
+            z-index: 100; pointer-events: none;
         }
         #joystick-knob {
-            position: absolute; left: 50px; top: 50px;
+            position: absolute; left: 45px; top: 45px;
             width: 40px; height: 40px; border-radius: 50%;
             background: rgba(255,255,255,0.95);
         }
         #jumpBtn {
-            position: fixed; right: 30px; bottom: 60px;
-            width: 90px; height: 90px; border-radius: 50%;
-            background: rgba(33,150,243,0.85);
-            color: white; font-size: 24px; font-weight: bold;
-            text-align: center; line-height: 90px;
-        }
-        #blockBar {
-            position: fixed; top: 20px; right: 20px; display: flex; gap: 10px;
-        }
-        .block-slot {
-            width: 50px; height: 50px; border-radius: 8px;
-            border: 2px solid rgba(255,255,255,0.6);
-        }
-        .block-slot.selected { border-color: yellow; border-width: 3px; }
-        #hud {
-            position: fixed; top: 20px; left: 20px; color: white;
-            font-family: ui-monospace, monospace; font-size: 12px;
-            text-shadow: 1px 1px 2px black;
-            line-height: 1.6; background: rgba(0,0,0,0.42);
-            padding: 6px 10px; border-radius: 6px;
-        }
-        #resetBtn {
-            position: fixed; top: 130px; left: 20px;
-            padding: 8px 14px; background: rgba(200,50,50,0.85);
-            color: white; font-size: 13px; border-radius: 6px;
-            font-family: ui-monospace, monospace;
+            position: fixed; right: 30px; bottom: 130px;
+            width: 84px; height: 84px; border-radius: 50%;
+            background: rgba(80, 180, 100, 0.85);
+            border: 3px solid rgba(255,255,255,0.5);
+            color: white; font-size: 20px; font-weight: bold;
+            text-align: center; line-height: 78px;
+            z-index: 100; pointer-events: none;
         }
         #longpressHint {
             position: fixed; pointer-events: none; z-index: 50;
             width: 80px; height: 80px; border-radius: 50%;
-            border: 3px solid rgba(255,0,0,0.85);
+            border: 3px solid rgba(255, 60, 60, 0.9);
             transform: translate(-50%, -50%) scale(0);
-            transition: transform 0.1s ease-out;
+            transition: transform 0.12s ease-out;
         }
         #longpressHint.active { transform: translate(-50%, -50%) scale(1); }
+        #toast {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            padding: 14px 24px;
+            background: rgba(0,0,0,0.75);
+            color: white; font-size: 15px;
+            border: 2px solid rgba(255,255,255,0.4);
+            border-radius: 6px;
+            z-index: 200; pointer-events: none;
+            opacity: 0; transition: opacity 0.25s;
+        }
+        #toast.show { opacity: 1; }
     </style>
 </head>
 <body>
-    <div id="crosshair"></div>
-    <div id="hud" class="ui-element">加载中...</div>
-    <div id="resetBtn" class="ui-element">重生成世界</div>
-    <div id="blockBar" class="ui-element"></div>
-    <div id="joystick" class="ui-element"><div id="joystick-knob"></div></div>
-    <div id="jumpBtn" class="ui-element">跳</div>
+    <canvas id="gameCanvas"></canvas>
+    <div id="hud">加载中...</div>
+    <div id="topBar">
+        <div class="mc-btn" id="saveBtn">💾 导出</div>
+        <div class="mc-btn" id="loadBtn">📂 导入</div>
+        <div class="mc-btn" id="resetBtn">🔄 新世界</div>
+    </div>
+    <div id="hotbar"></div>
+    <div id="joystick"><div id="joystick-knob"></div></div>
+    <div id="jumpBtn">跳</div>
     <div id="longpressHint"></div>
+    <div id="toast"></div>
+    <input type="file" id="fileInput" accept=".json" style="display:none">
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.min.js"></script>
     <script>
@@ -87,34 +116,35 @@
         stone: { name: '石头',   color: '#888888' },
         wood:  { name: '木头',   color: '#6b4423' },
     };
+    const HOTBAR_ORDER = ['grass', 'dirt', 'stone', 'wood'];
 
     const CONST = {
         GRAVITY: 22, JUMP_SPEED: 8.5, MOVE_SPEED: 6,
         PLAYER_W: 0.6, PLAYER_H: 1.8, EYE_H: 1.6,
-        RENDER_RADIUS: 9,
-        CAVE_DEPTH_LIMIT: -12,
-        SAVE_KEY: 'minicraft_save_v4',  // 升级版本号，旧存档失效
+        RENDER_RADIUS: 9, CAVE_DEPTH_LIMIT: -12,
+        SAVE_KEY: 'minicraft_v6',
         FIXED_DT: 1 / 60,
         LONG_PRESS_MS: 450, MOVE_THRESHOLD: 25, SWEEP_STEP: 0.05,
-        PITCH_LIMIT: 1.5,
+        // ★ 更保守的 pitch 上限，避免接近 ±90° 的奇异点
+        PITCH_LIMIT: 1.45,
     };
 
+    // ============ 纹理 ============
     function makeBlockTexture(hexColor) {
-        const canvas = document.createElement('canvas');
-        canvas.width = 16; canvas.height = 16;
-        const ctx = canvas.getContext('2d');
+        const c = document.createElement('canvas');
+        c.width = c.height = 16;
+        const ctx = c.getContext('2d');
         ctx.fillStyle = hexColor;
         ctx.fillRect(0, 0, 16, 16);
         for (let i = 0; i < 100; i++) {
-            const x = (Math.random() * 16) | 0;
-            const y = (Math.random() * 16) | 0;
+            const x = (Math.random() * 16) | 0, y = (Math.random() * 16) | 0;
             const a = (Math.random() * 0.35).toFixed(2);
             ctx.fillStyle = Math.random() > 0.5 ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a})`;
             ctx.fillRect(x, y, 1, 1);
         }
-        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
         ctx.strokeRect(0.5, 0.5, 15, 15);
-        const tex = new THREE.CanvasTexture(canvas);
+        const tex = new THREE.CanvasTexture(c);
         tex.magFilter = THREE.NearestFilter;
         tex.minFilter = THREE.NearestFilter;
         return tex;
@@ -126,7 +156,7 @@
         BLOCK_MATERIALS[k] = new THREE.MeshLambertMaterial({ map: makeBlockTexture(BLOCK_CONFIG[k].color) });
     }
 
-    // 3D 噪声
+    // ============ 噪声 & 地形 ============
     function hash3(x, y, z) {
         let n = x * 374761393 + y * 668265263 + z * 1274126177;
         n = (n ^ (n >> 13)) * 1274126177;
@@ -142,10 +172,8 @@
         const c011 = hash3(xi, yi+1, zi+1), c111 = hash3(xi+1, yi+1, zi+1);
         const x00 = c000*(1-u) + c100*u, x10 = c010*(1-u) + c110*u;
         const x01 = c001*(1-u) + c101*u, x11 = c011*(1-u) + c111*u;
-        const y0 = x00*(1-v) + x10*v, y1 = x01*(1-v) + x11*v;
-        return y0*(1-w) + y1*w;
+        return (x00*(1-v) + x10*v)*(1-w) + (x01*(1-v) + x11*v)*w;
     }
-
     function terrainHeight(x, z) {
         return Math.round(
             Math.sin(x * 0.15) * 1.3 + Math.cos(z * 0.18) * 1.1 +
@@ -153,7 +181,6 @@
             Math.sin(x * 0.05) * 1.8 + Math.cos(z * 0.07) * 1.4
         );
     }
-
     function isCave(x, y, z) {
         if (y >= terrainHeight(x, z) - 2) return false;
         if (y < CONST.CAVE_DEPTH_LIMIT) return false;
@@ -162,7 +189,6 @@
         const depth = terrainHeight(x, z) - y;
         return n1 + n2 + Math.min(depth / 20, 0.15) > 0.75;
     }
-
     function generateBlock(x, y, z) {
         const h = terrainHeight(x, z);
         if (y > h) return null;
@@ -183,32 +209,38 @@
     const isSolid = (x, y, z) => getBlockType(x, y, z) !== null;
     const setBlock = (x, y, z, type) => modifications.set(worldKey(x, y, z), type);
 
-    // 场景
+    // ============ 场景 ============
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87CEEB);
     scene.fog = new THREE.Fog(0x87CEEB, 20, 55);
 
-    const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 200);
-    camera.up.set(0, 1, 0);  // ★ 强制 up 向量
-    camera.rotation.order = 'YXZ';
+    const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 200);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(innerWidth, innerHeight);
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    renderer.domElement.style.cssText = 'position:fixed;top:0;left:0;z-index:1;';
-    document.body.appendChild(renderer.domElement);
+    const canvasElement = document.getElementById('gameCanvas');
+    const renderer = new THREE.WebGLRenderer({ canvas: canvasElement, antialias: true });
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+    function resizeRenderer() {
+        const w = document.documentElement.clientWidth || window.innerWidth;
+        const h = document.documentElement.clientHeight || window.innerHeight;
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setSize(w, h, false);
+        canvasElement.style.width = w + 'px';
+        canvasElement.style.height = h + 'px';
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+    }
+    resizeRenderer();
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.75);
     sun.position.set(30, 50, 30);
     scene.add(sun);
-    const fill = new THREE.DirectionalLight(0xffffff, 0.2);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.25);
     fill.position.set(-30, -20, -30);
     scene.add(fill);
 
-    // 渲染
+    // ============ 渲染 ============
     const renderedMeshes = new Map();
-
     function addMeshAt(x, y, z, type) {
         const k = worldKey(x, y, z);
         if (renderedMeshes.has(k)) return;
@@ -220,21 +252,18 @@
         scene.add(mesh);
         renderedMeshes.set(k, mesh);
     }
-
     function removeMeshAt(x, y, z) {
         const k = worldKey(x, y, z);
         const mesh = renderedMeshes.get(k);
         if (mesh) { scene.remove(mesh); renderedMeshes.delete(k); }
     }
-
     function updateRender() {
         const cx = Math.floor(player.pos.x);
         const cz = Math.floor(player.pos.z);
         const cy = Math.floor(player.pos.y);
         const needed = new Set();
-        const yMinGlobal = Math.max(CONST.CAVE_DEPTH_LIMIT - 2, cy - 10);
-        const yMaxGlobal = cy + 10;
-
+        const yMin = Math.max(CONST.CAVE_DEPTH_LIMIT - 2, cy - 10);
+        const yMax = cy + 10;
         for (let dx = -CONST.RENDER_RADIUS; dx <= CONST.RENDER_RADIUS; dx++) {
             for (let dz = -CONST.RENDER_RADIUS; dz <= CONST.RENDER_RADIUS; dz++) {
                 const x = cx + dx, z = cz + dz;
@@ -247,8 +276,8 @@
                         if (!renderedMeshes.has(k)) addMeshAt(x, y, z, type);
                     }
                 }
-                const yTop = Math.min(h - 5, yMaxGlobal);
-                const yBot = Math.max(CONST.CAVE_DEPTH_LIMIT - 2, yMinGlobal);
+                const yTop = Math.min(h - 5, yMax);
+                const yBot = Math.max(CONST.CAVE_DEPTH_LIMIT - 2, yMin);
                 for (let y = yTop; y >= yBot; y--) {
                     const k = worldKey(x, y, z);
                     if (needed.has(k)) continue;
@@ -276,14 +305,14 @@
         }
     }
 
-    // 玩家
+    // ============ 玩家 ============
     const spawnH = terrainHeight(0, 0);
     const player = {
         pos: new THREE.Vector3(0.5, spawnH + 2, 0.5),
         yaw: 0, pitch: -0.3, vy: 0, onGround: false,
     };
 
-    // 碰撞
+    // ============ 碰撞 ============
     function isColliding(pos) {
         const minX = pos.x - CONST.PLAYER_W / 2, maxX = pos.x + CONST.PLAYER_W / 2;
         const minY = pos.y, maxY = pos.y + CONST.PLAYER_H;
@@ -300,7 +329,6 @@
                         maxZ > z && minZ < z + 1) return true;
         return false;
     }
-
     function exactGroundY(pos) {
         const halfW = CONST.PLAYER_W / 2;
         const x0 = Math.floor(pos.x - halfW + 0.001);
@@ -320,10 +348,8 @@
         }
         return highest;
     }
-
     function sweepMove(axis, dist) {
-        const step = CONST.SWEEP_STEP;
-        const n = Math.max(1, Math.ceil(Math.abs(dist) / step));
+        const n = Math.max(1, Math.ceil(Math.abs(dist) / CONST.SWEEP_STEP));
         const s = dist / n;
         for (let i = 0; i < n; i++) {
             const test = {
@@ -339,134 +365,194 @@
         return false;
     }
 
-    // 射线
+    // ============ 射线 ============
     const raycaster = new THREE.Raycaster();
     raycaster.far = 6;
-
+    const _rayDir = new THREE.Vector3();
     function raycast() {
-        const dir = new THREE.Vector3(
-            -Math.sin(player.yaw) * Math.cos(player.pitch),
-            Math.sin(player.pitch),
-            -Math.cos(player.yaw) * Math.cos(player.pitch)
-        );
-        raycaster.set(camera.position, dir);
+        camera.getWorldDirection(_rayDir);
+        raycaster.set(camera.position, _rayDir);
         const hits = raycaster.intersectObjects([...renderedMeshes.values()], false);
         if (hits.length === 0) return null;
         const h = hits[0];
         return { block: h.object.userData, normal: h.face.normal.clone() };
     }
 
-    // 放置 / 破坏
-    let lastAction = '初始化';
-    const flash = msg => { lastAction = msg; };
-
+    // ============ 放置 / 破坏 ============
+    let lastAction = '';
+    function toast(msg) {
+        const el = document.getElementById('toast');
+        el.textContent = msg;
+        el.classList.add('show');
+        clearTimeout(el._t);
+        el._t = setTimeout(() => el.classList.remove('show'), 800);
+        lastAction = msg;
+    }
     function tryPlace() {
         const hit = raycast();
-        if (!hit) return flash('放 ✗ 没对准');
+        if (!hit) return toast('没对准方块');
         const { x, y, z } = hit.block;
         const n = hit.normal;
         const tx = x + n.x, ty = y + n.y, tz = z + n.z;
-        if (isSolid(tx, ty, tz)) return flash('放 ✗ 已占用');
+        if (isSolid(tx, ty, tz)) return;
         const pMinX = player.pos.x - CONST.PLAYER_W / 2, pMaxX = player.pos.x + CONST.PLAYER_W / 2;
         const pMinY = player.pos.y, pMaxY = player.pos.y + CONST.PLAYER_H;
         const pMinZ = player.pos.z - CONST.PLAYER_W / 2, pMaxZ = player.pos.z + CONST.PLAYER_W / 2;
         if (pMaxX > tx && pMinX < tx + 1 && pMaxY > ty && pMinY < ty + 1 && pMaxZ > tz && pMinZ < tz + 1)
-            return flash('放 ✗ 卡住自己');
+            return toast('会卡住自己');
         setBlock(tx, ty, tz, currentBlock);
         addMeshAt(tx, ty, tz, currentBlock);
-        flash(`放 ✓ ${tx},${ty},${tz}`);
         scheduleSave();
     }
-
     function tryBreak() {
         const hit = raycast();
-        if (!hit) return flash('挖 ✗ 没对准');
+        if (!hit) return toast('没对准方块');
         const { x, y, z } = hit.block;
         const footX = Math.floor(player.pos.x), footZ = Math.floor(player.pos.z);
         const footY = Math.floor(player.pos.y - 0.05);
-        if (x === footX && y === footY && z === footZ) return flash('挖 ✗ 不能挖脚下');
+        if (x === footX && y === footY && z === footZ) return toast('不能挖脚下');
         setBlock(x, y, z, null);
         removeMeshAt(x, y, z);
-        flash(`挖 ✓ ${x},${y},${z}`);
         scheduleSave();
     }
 
-    // 存档
+    // ============ 存档 ============
     let saveTimer = null;
     function scheduleSave() {
-        if (saveTimer) clearTimeout(saveTimer);
-        saveTimer = setTimeout(save, 500);
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(saveToLocal, 500);
     }
-
-    function save() {
-        try {
-            localStorage.setItem(CONST.SAVE_KEY, JSON.stringify({
-                modifications: [...modifications],
-                player: {
-                    x: player.pos.x, y: player.pos.y, z: player.pos.z,
-                    yaw: player.yaw, pitch: player.pitch,
-                },
-                currentBlock,
-            }));
-        } catch (e) { console.warn('存档失败', e); }
+    function getSaveData() {
+        return {
+            version: 6,
+            modifications: [...modifications],
+            player: {
+                x: player.pos.x, y: player.pos.y, z: player.pos.z,
+                yaw: player.yaw, pitch: player.pitch,
+            },
+            currentBlock,
+        };
     }
-
-    function load() {
+    function saveToLocal() {
+        try { localStorage.setItem(CONST.SAVE_KEY, JSON.stringify(getSaveData())); }
+        catch (e) { console.warn('自动存档失败', e); }
+    }
+    function applySaveData(data) {
+        if (!data || typeof data !== 'object') return false;
+        modifications.clear();
+        if (Array.isArray(data.modifications)) {
+            for (const entry of data.modifications) {
+                if (Array.isArray(entry) && entry.length === 2) {
+                    const [k, v] = entry;
+                    if (typeof k === 'string' && (v === null || BLOCK_CONFIG[v])) {
+                        modifications.set(k, v);
+                    }
+                }
+            }
+        }
+        if (data.player) {
+            const px = Number(data.player.x), py = Number(data.player.y), pz = Number(data.player.z);
+            const pyaw = Number(data.player.yaw), ppitch = Number(data.player.pitch);
+            player.pos.set(
+                Number.isFinite(px) ? px : 0.5,
+                Number.isFinite(py) ? py : spawnH + 2,
+                Number.isFinite(pz) ? pz : 0.5
+            );
+            player.yaw = Number.isFinite(pyaw) ? pyaw : 0;
+            player.pitch = Number.isFinite(ppitch)
+                ? Math.max(-CONST.PITCH_LIMIT, Math.min(CONST.PITCH_LIMIT, ppitch))
+                : -0.3;
+        }
+        if (data.currentBlock && BLOCK_CONFIG[data.currentBlock]) {
+            currentBlock = data.currentBlock;
+            updateHotbarSelection();
+        }
+        for (const mesh of renderedMeshes.values()) scene.remove(mesh);
+        renderedMeshes.clear();
+        player.vy = 0;
+        player.onGround = false;
+        updateRender();
+        return true;
+    }
+    function loadFromLocal() {
         try {
             const raw = localStorage.getItem(CONST.SAVE_KEY);
             if (!raw) return false;
-            const data = JSON.parse(raw);
-            if (data.modifications) for (const [k, v] of data.modifications) modifications.set(k, v);
-            if (data.player) {
-                // ★ 强制数值校验 + clamp
-                const px = Number(data.player.x);
-                const py = Number(data.player.y);
-                const pz = Number(data.player.z);
-                const pyaw = Number(data.player.yaw);
-                const ppitch = Number(data.player.pitch);
-                player.pos.set(
-                    Number.isFinite(px) ? px : 0.5,
-                    Number.isFinite(py) ? py : spawnH + 2,
-                    Number.isFinite(pz) ? pz : 0.5
-                );
-                player.yaw = Number.isFinite(pyaw) ? pyaw : 0;
-                // ★ 关键：pitch 严格 clamp 到 [-1.5, 1.5]
-                player.pitch = Number.isFinite(ppitch)
-                    ? Math.max(-CONST.PITCH_LIMIT, Math.min(CONST.PITCH_LIMIT, ppitch))
-                    : -0.3;
-            }
-            if (data.currentBlock && BLOCK_CONFIG[data.currentBlock]) currentBlock = data.currentBlock;
-            return true;
+            return applySaveData(JSON.parse(raw));
         } catch (e) { return false; }
     }
-
+    function exportSave() {
+        saveToLocal();
+        const data = getSaveData();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const now = new Date();
+        const stamp = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+        a.href = url;
+        a.download = `minicraft-${stamp}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        toast('存档已导出');
+    }
+    function importSave() {
+        document.getElementById('fileInput').click();
+    }
+    document.getElementById('fileInput').addEventListener('change', e => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+            try {
+                const data = JSON.parse(ev.target.result);
+                if (applySaveData(data)) {
+                    saveToLocal();
+                    toast('存档已导入');
+                } else toast('存档格式错误');
+            } catch (err) { toast('读取失败'); }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+    });
     function resetWorld() {
+        if (!confirm('确定清空存档并重新生成世界吗？')) return;
         localStorage.removeItem(CONST.SAVE_KEY);
         modifications.clear();
         for (const mesh of renderedMeshes.values()) scene.remove(mesh);
         renderedMeshes.clear();
         const sh = terrainHeight(0, 0);
         player.pos.set(0.5, sh + 2, 0.5);
-        player.vy = 0;
-        player.onGround = false;
-        player.yaw = 0;
-        player.pitch = -0.3;
+        player.vy = 0; player.onGround = false;
+        player.yaw = 0; player.pitch = -0.3;
         updateRender();
-        flash('✓ 世界已重置');
+        toast('新世界已生成');
     }
 
-    // 输入
+    // ============ 输入 ============
     let moveInput = { x: 0, y: 0 };
     let jumpRequested = false;
     let currentBlock = 'grass';
 
-    const blockBar = document.getElementById('blockBar');
-    for (const k in BLOCK_CONFIG) {
-        const el = document.createElement('div');
-        el.className = 'block-slot' + (k === currentBlock ? ' selected' : '');
-        el.dataset.type = k;
-        el.style.background = BLOCK_CONFIG[k].color;
-        blockBar.appendChild(el);
+    const hotbar = document.getElementById('hotbar');
+    const hotbarSlots = [];
+    for (const k of HOTBAR_ORDER) {
+        const slot = document.createElement('div');
+        slot.className = 'hotbar-slot' + (k === currentBlock ? ' selected' : '');
+        slot.dataset.type = k;
+        slot.style.background = BLOCK_CONFIG[k].color;
+        const label = document.createElement('div');
+        label.className = 'label';
+        label.textContent = BLOCK_CONFIG[k].name[0];
+        slot.appendChild(label);
+        hotbar.appendChild(slot);
+        hotbarSlots.push(slot);
+    }
+    function updateHotbarSelection() {
+        hotbarSlots.forEach((s, i) => {
+            s.classList.toggle('selected', HOTBAR_ORDER[i] === currentBlock);
+        });
     }
 
     const joystick = document.getElementById('joystick');
@@ -478,7 +564,7 @@
     function joyMove(x, y) {
         const dx = x - joyCenter.x, dy = y - joyCenter.y;
         const dist = Math.hypot(dx, dy);
-        const maxDist = 50;
+        const maxDist = 45;
         const clamped = Math.min(dist, maxDist);
         const angle = Math.atan2(dy, dx);
         const kx = Math.cos(angle) * clamped;
@@ -487,7 +573,6 @@
         moveInput.x = kx / maxDist;
         moveInput.y = ky / maxDist;
     }
-
     function joyEnd() {
         moveInput = { x: 0, y: 0 };
         knob.style.transform = 'translate(0,0)';
@@ -503,8 +588,10 @@
         return {
             jump: document.getElementById('jumpBtn').getBoundingClientRect(),
             joystick: joystick.getBoundingClientRect(),
+            save: document.getElementById('saveBtn').getBoundingClientRect(),
+            load: document.getElementById('loadBtn').getBoundingClientRect(),
             reset: document.getElementById('resetBtn').getBoundingClientRect(),
-            slots: [...document.querySelectorAll('.block-slot')].map(el => ({
+            slots: [...document.querySelectorAll('.hotbar-slot')].map(el => ({
                 el, rect: el.getBoundingClientRect(), type: el.dataset.type
             })),
         };
@@ -516,24 +603,20 @@
         const ui = getUIElements();
         for (const t of e.changedTouches) {
             const x = t.clientX, y = t.clientY;
-            if (pointInRect(x, y, ui.reset)) {
-                if (confirm('确定清空存档并重新生成世界？')) resetWorld();
-                activeTouches.set(t.identifier, { type: 'reset' });
-                continue;
-            }
+            if (pointInRect(x, y, ui.save))  { exportSave(); activeTouches.set(t.identifier, { type: 'ui' }); continue; }
+            if (pointInRect(x, y, ui.load))  { importSave(); activeTouches.set(t.identifier, { type: 'ui' }); continue; }
+            if (pointInRect(x, y, ui.reset)) { resetWorld(); activeTouches.set(t.identifier, { type: 'ui' }); continue; }
             if (pointInCircle(x, y, ui.jump)) {
-                jumpRequested = true; flash('跳');
+                jumpRequested = true;
                 activeTouches.set(t.identifier, { type: 'jump' });
                 continue;
             }
             let slotHit = null;
-            for (const s of ui.slots) if (pointInCircle(x, y, s.rect)) { slotHit = s; break; }
+            for (const s of ui.slots) if (pointInRect(x, y, s.rect)) { slotHit = s; break; }
             if (slotHit) {
-                document.querySelectorAll('.block-slot').forEach(s => s.classList.remove('selected'));
-                slotHit.el.classList.add('selected');
                 currentBlock = slotHit.type;
-                flash(`选择: ${BLOCK_CONFIG[currentBlock].name}`);
-                activeTouches.set(t.identifier, { type: 'slot' });
+                updateHotbarSelection();
+                activeTouches.set(t.identifier, { type: 'ui' });
                 continue;
             }
             if (pointInCircle(x, y, ui.joystick)) {
@@ -569,14 +652,15 @@
                 joyMove(t.clientX, t.clientY);
             } else if (info.type === 'empty') {
                 const dx = t.clientX - info.lastX, dy = t.clientY - info.lastY;
-                const totalMove = Math.hypot(t.clientX - info.startX, t.clientY - info.startY);
-                if (totalMove > CONST.MOVE_THRESHOLD) {
+                if (Math.hypot(t.clientX - info.startX, t.clientY - info.startY) > CONST.MOVE_THRESHOLD) {
                     info.moved = true;
                     if (info.longPressTimer) { clearTimeout(info.longPressTimer); info.longPressTimer = null; }
                 }
                 if (info.moved) {
                     player.yaw -= dx * 0.005;
-                    // ★ pitch 严格 clamp
+                    // 立即归一化 yaw，避免数值无限增长
+                    if (player.yaw > Math.PI) player.yaw -= 2 * Math.PI;
+                    else if (player.yaw < -Math.PI) player.yaw += 2 * Math.PI;
                     player.pitch = Math.max(-CONST.PITCH_LIMIT, Math.min(CONST.PITCH_LIMIT, player.pitch - dy * 0.005));
                 }
                 info.lastX = t.clientX; info.lastY = t.clientY;
@@ -608,7 +692,7 @@
         }
     });
 
-    // 物理
+    // ============ 物理 ============
     function physicsStep(dt) {
         const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
         const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
@@ -618,11 +702,13 @@
         if (move.length() > 1) move.normalize();
         sweepMove('x', move.x * CONST.MOVE_SPEED * dt);
         sweepMove('z', move.z * CONST.MOVE_SPEED * dt);
+
         if (jumpRequested && player.onGround) {
             player.vy = CONST.JUMP_SPEED;
             player.onGround = false;
         }
         jumpRequested = false;
+
         player.vy -= CONST.GRAVITY * dt;
         player.vy = Math.max(player.vy, -30);
         const hit = sweepMove('y', player.vy * dt);
@@ -630,11 +716,9 @@
             if (player.vy < 0) {
                 const g = exactGroundY(player.pos);
                 if (g > -Infinity && g <= player.pos.y + 0.1) player.pos.y = g;
-                player.vy = 0;
-                player.onGround = true;
+                player.vy = 0; player.onGround = true;
             } else {
-                player.vy = 0;
-                player.onGround = false;
+                player.vy = 0; player.onGround = false;
             }
         } else {
             const below = { x: player.pos.x, y: player.pos.y - 0.05, z: player.pos.z };
@@ -647,27 +731,51 @@
         }
     }
 
-    // ★★★ 相机更新：用四元数手动构造，绝对不会有 roll ★★★
-    const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
-    const _quat = new THREE.Quaternion();
+    // ==========================================================
+    // ★★★ 相机：用显式四元数构造，数学上严格无 roll ★★★
+    // 顺序：先绕本地 X 轴 pitch，再绕世界 Y 轴 yaw
+    // 等价于欧拉角 YXZ，但不依赖 THREE.Euler 的内部实现
+    // ==========================================================
+    const _yAxis = new THREE.Vector3(0, 1, 0);
+    const _xAxis = new THREE.Vector3(1, 0, 0);
+    const _yawQuat = new THREE.Quaternion();
+    const _pitchQuat = new THREE.Quaternion();
 
     function updateCamera() {
-        camera.up.set(0, 1, 0);  // 每帧重置 up
         camera.position.set(player.pos.x, player.pos.y + CONST.EYE_H, player.pos.z);
-        _euler.set(player.pitch, player.yaw, 0, 'YXZ');
-        _quat.setFromEuler(_euler);
-        camera.quaternion.copy(_quat);
+
+        _yawQuat.setFromAxisAngle(_yAxis, player.yaw);
+        _pitchQuat.setFromAxisAngle(_xAxis, player.pitch);
+
+        // 先 pitch 后 yaw：结果 = yawQuat * pitchQuat
+        camera.quaternion.copy(_yawQuat).multiply(_pitchQuat);
+
+        // 强制滚转为零（保险措施）
+        // 理论上不会发生，但万一数值误差累积，这一步可以彻底消除
+        const e = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+        if (Math.abs(e.z) > 1e-6) {
+            e.z = 0;
+            camera.quaternion.setFromEuler(e);
+        }
     }
 
-    // 主循环
+    // ============ 主循环 ============
     let lastTime = performance.now();
     let accumulator = 0;
-    let fpsTimer = 0, fpsCount = 0, renderTimer = 0, hudTimer = 0;
+    let fpsTimer = 0, fpsCount = 0, renderTimer = 0, hudTimer = 0, resizeTimer = 0;
 
     function update() {
         const now = performance.now();
         const frameTime = Math.min((now - lastTime) / 1000, 0.1);
         lastTime = now;
+
+        resizeTimer += frameTime;
+        if (resizeTimer > 2) {
+            resizeTimer = 0;
+            const w = document.documentElement.clientWidth || window.innerWidth;
+            const h = document.documentElement.clientHeight || window.innerHeight;
+            if (Math.abs(camera.aspect - w / h) > 0.01) resizeRenderer();
+        }
 
         accumulator += frameTime;
         let steps = 0;
@@ -694,22 +802,21 @@
             hud.innerHTML =
                 `FPS: ${Math.round(fpsCount / fpsTimer)}<br>` +
                 `位置: ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}<br>` +
-                `视角: yaw=${player.yaw.toFixed(2)}, pitch=${player.pitch.toFixed(2)}<br>` +
-                `状态: ${player.onGround ? '着地' : '空中'} | 方块: ${renderedMeshes.size}`;
+                `yaw=${player.yaw.toFixed(2)} pitch=${player.pitch.toFixed(2)}<br>` +
+                `方块: ${renderedMeshes.size}`;
             fpsCount = 0; fpsTimer = 0; hudTimer = 0;
         }
 
         requestAnimationFrame(update);
     }
 
-    window.addEventListener('resize', () => {
-        camera.aspect = innerWidth / innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(innerWidth, innerHeight);
-    });
-    window.addEventListener('beforeunload', save);
+    window.addEventListener('resize', resizeRenderer);
+    window.addEventListener('orientationchange', () => setTimeout(resizeRenderer, 200));
+    window.addEventListener('beforeunload', saveToLocal);
 
-    if (load()) flash('✓ 已读取存档');
+    if (loadFromLocal()) {
+        setTimeout(() => toast('已读取本地存档'), 500);
+    }
     updateRender();
     update();
     </script>
