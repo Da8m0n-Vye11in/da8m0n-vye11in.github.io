@@ -6,144 +6,72 @@
     <title>MiniCraft</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        html, body {
-            width: 100%; height: 100%; overflow: hidden; background: #87CEEB;
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #87CEEB;
             -webkit-user-select: none; user-select: none; touch-action: none;
-            position: fixed; font-family: ui-monospace, "Menlo", monospace;
-        }
+            position: fixed; font-family: ui-monospace, "Menlo", monospace; }
         #gameCanvas { display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-
-        #crosshair {
-            position: fixed; top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: 28px; height: 28px; pointer-events: none; z-index: 10;
-        }
-        #crosshair::before, #crosshair::after {
-            content: ''; position: absolute; background: white;
-            box-shadow: 0 0 3px black;
-        }
+        #crosshair { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+            width: 28px; height: 28px; pointer-events: none; z-index: 10; }
+        #crosshair::before, #crosshair::after { content: ''; position: absolute; background: white; box-shadow: 0 0 3px black; }
         #crosshair::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
         #crosshair::after  { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
-
-        #hud {
-            position: fixed; top: 16px; left: 16px;
-            color: white; font-size: 11px; line-height: 1.55;
-            text-shadow: 1px 1px 2px black;
-            background: rgba(0,0,0,0.5); padding: 6px 10px; border-radius: 4px;
-            z-index: 100; pointer-events: none;
-        }
-        #topBar {
-            position: fixed; top: 16px; right: 16px;
-            display: flex; gap: 6px; z-index: 100;
-        }
-        .mc-btn {
-            padding: 10px 14px;
-            background: rgba(0, 0, 0, 0.6);
-            border: 2px solid rgba(255, 255, 255, 0.4);
-            border-radius: 4px;
-            color: white; font-size: 14px; font-family: inherit;
-            user-select: none; cursor: pointer;
-        }
-        .mc-btn:active { background: rgba(80, 80, 80, 0.8); }
-
-        #hotbar {
-            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 3px; padding: 4px;
-            background: rgba(0, 0, 0, 0.55);
-            border: 2px solid rgba(255, 255, 255, 0.35);
-            border-radius: 4px; z-index: 100; pointer-events: none;
-        }
-        .hotbar-slot {
-            width: 46px; height: 46px; border-radius: 2px;
-            background: rgba(80, 80, 80, 0.6);
-            border: 2px solid rgba(255, 255, 255, 0.2);
-        }
+        #hud { position: fixed; top: 16px; left: 16px; color: white; font-size: 11px; line-height: 1.55;
+            text-shadow: 1px 1px 2px black; background: rgba(0,0,0,0.5);
+            padding: 6px 10px; border-radius: 4px; z-index: 100; pointer-events: none; }
+        #topBar { position: fixed; top: 16px; right: 16px; display: flex; gap: 6px; z-index: 100; }
+        .mc-btn { padding: 10px 14px; background: rgba(0,0,0,0.6);
+            border: 2px solid rgba(255,255,255,0.4); border-radius: 4px;
+            color: white; font-size: 14px; font-family: inherit; user-select: none; cursor: pointer; }
+        .mc-btn:active { background: rgba(80,80,80,0.8); }
+        #hotbar { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 3px; padding: 4px; background: rgba(0,0,0,0.55);
+            border: 2px solid rgba(255,255,255,0.35); border-radius: 4px; z-index: 100; pointer-events: none; }
+        .hotbar-slot { width: 46px; height: 46px; border-radius: 2px;
+            background: rgba(80,80,80,0.6); border: 2px solid rgba(255,255,255,0.2); }
         .hotbar-slot.selected { border: 3px solid #fff; box-shadow: 0 0 8px rgba(255,255,255,0.8); }
-
-        #joystick {
-            position: fixed; left: 30px; bottom: 100px;
-            width: 130px; height: 130px; border-radius: 50%;
-            background: rgba(255,255,255,0.22);
-            z-index: 100; pointer-events: none;
-        }
-        #joystick-knob {
-            position: absolute; left: 45px; top: 45px;
-            width: 40px; height: 40px; border-radius: 50%;
-            background: rgba(255,255,255,0.95);
-        }
-        #jumpBtn {
-            position: fixed; right: 30px; bottom: 130px;
-            width: 84px; height: 84px; border-radius: 50%;
-            background: rgba(80, 180, 100, 0.85);
-            border: 3px solid rgba(255,255,255,0.5);
-            color: white; font-size: 20px; font-weight: bold;
-            text-align: center; line-height: 78px;
-            z-index: 100; pointer-events: none;
-        }
-        #longpressHint {
-            position: fixed; pointer-events: none; z-index: 50;
+        #joystick { position: fixed; left: 30px; bottom: 100px; width: 130px; height: 130px; border-radius: 50%;
+            background: rgba(255,255,255,0.22); z-index: 100; pointer-events: none; }
+        #joystick-knob { position: absolute; left: 45px; top: 45px; width: 40px; height: 40px;
+            border-radius: 50%; background: rgba(255,255,255,0.95); }
+        #jumpBtn { position: fixed; right: 30px; bottom: 130px; width: 84px; height: 84px;
+            border-radius: 50%; background: rgba(80,180,100,0.85);
+            border: 3px solid rgba(255,255,255,0.5); color: white;
+            font-size: 20px; font-weight: bold; text-align: center; line-height: 78px;
+            z-index: 100; pointer-events: none; }
+        #longpressHint { position: fixed; pointer-events: none; z-index: 50;
             width: 80px; height: 80px; border-radius: 50%;
-            border: 3px solid rgba(255, 60, 60, 0.9);
-            transform: translate(-50%, -50%) scale(0);
-            transition: transform 0.12s;
-        }
-        #longpressHint.active { transform: translate(-50%, -50%) scale(1); }
-
-        #toast {
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            padding: 14px 24px;
-            background: rgba(0,0,0,0.8);
-            color: white; font-size: 15px;
-            border: 2px solid rgba(255,255,255,0.4);
-            border-radius: 6px;
-            z-index: 500; pointer-events: none;
-            opacity: 0; transition: opacity 0.25s;
-        }
+            border: 3px solid rgba(255,60,60,0.9);
+            transform: translate(-50%,-50%) scale(0); transition: transform 0.12s; }
+        #longpressHint.active { transform: translate(-50%,-50%) scale(1); }
+        #toast { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+            padding: 14px 24px; background: rgba(0,0,0,0.8); color: white;
+            font-size: 15px; border: 2px solid rgba(255,255,255,0.4); border-radius: 6px;
+            z-index: 500; pointer-events: none; opacity: 0; transition: opacity 0.25s; }
         #toast.show { opacity: 1; }
-
         #settingsPanel, #inventoryPanel {
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 340px; max-width: 90vw;
-            background: rgba(30, 30, 40, 0.97);
-            border: 3px solid rgba(255, 255, 255, 0.5);
-            border-radius: 8px;
-            color: white; padding: 18px;
-            z-index: 300; display: none;
-            font-size: 13px;
-        }
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+            width: 340px; max-width: 90vw; background: rgba(30,30,40,0.97);
+            border: 3px solid rgba(255,255,255,0.5); border-radius: 8px;
+            color: white; padding: 18px; z-index: 300; display: none; font-size: 13px; }
         #settingsPanel.show, #inventoryPanel.show { display: block; }
         #settingsPanel h3, #inventoryPanel h3 { margin-bottom: 12px; text-align: center; font-size: 16px; }
-        .setting-row {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 14px; gap: 10px;
-        }
+        .setting-row { display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 14px; gap: 10px; }
         .setting-row label { flex: 1; }
         .setting-row input[type=range] { flex: 1.2; touch-action: auto; }
         .setting-row .val { width: 36px; text-align: right; color: #ffd966; }
-        .setting-row select {
-            padding: 6px; border-radius: 4px; background: #222; color: white;
-            border: 1px solid #666; font-family: inherit; font-size: 13px;
-        }
+        .setting-row select { padding: 6px; border-radius: 4px; background: #222;
+            color: white; border: 1px solid #666; font-family: inherit; font-size: 13px; }
         .setting-row input[type=checkbox] { width: 22px; height: 22px; }
-        .panel-btn {
-            display: block; width: 100%; padding: 12px;
-            margin-top: 10px; background: rgba(80, 120, 180, 0.9);
-            color: white; border: 2px solid rgba(255,255,255,0.35);
-            border-radius: 4px; font-size: 14px; font-family: inherit;
-            user-select: none; cursor: pointer;
-        }
-        .panel-btn:active { background: rgba(100, 140, 200, 0.9); }
-
-        #inventoryGrid {
-            display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
-        }
-        .inv-slot {
-            aspect-ratio: 1; border-radius: 4px;
-            border: 2px solid rgba(255,255,255,0.3);
+        .panel-btn { display: block; width: 100%; padding: 12px; margin-top: 10px;
+            background: rgba(80,120,180,0.9); color: white;
+            border: 2px solid rgba(255,255,255,0.35); border-radius: 4px;
+            font-size: 14px; font-family: inherit; user-select: none; cursor: pointer; }
+        .panel-btn:active { background: rgba(100,140,200,0.9); }
+        #inventoryGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+        .inv-slot { aspect-ratio: 1; border-radius: 4px; border: 2px solid rgba(255,255,255,0.3);
             display: flex; align-items: center; justify-content: center;
-            font-size: 10px; text-shadow: 1px 1px 1px black;
-            cursor: pointer;
-        }
+            font-size: 10px; text-shadow: 1px 1px 1px black; cursor: pointer; }
         .inv-slot.selected { border-color: #ffd966; box-shadow: 0 0 8px #ffd966; }
         .inv-slot:active { transform: scale(0.95); }
     </style>
@@ -152,7 +80,6 @@
     <canvas id="gameCanvas"></canvas>
     <div id="crosshair"></div>
     <div id="hud">加载中...</div>
-
     <div id="topBar">
         <div class="mc-btn" id="settingsBtn">⚙️</div>
         <div class="mc-btn" id="inventoryBtn">🎒</div>
@@ -160,7 +87,6 @@
         <div class="mc-btn" id="loadBtn">📂</div>
         <div class="mc-btn" id="resetBtn">🔄</div>
     </div>
-
     <div id="hotbar"></div>
     <div id="joystick"><div id="joystick-knob"></div></div>
     <div id="jumpBtn">跳</div>
@@ -176,25 +102,17 @@
                 <option value="flat">超平坦</option>
             </select>
         </div>
-        <div class="setting-row">
-            <label>渲染距离</label>
+        <div class="setting-row"><label>渲染距离</label>
             <input type="range" id="renderDistSlider" min="4" max="14" value="7">
-            <span class="val" id="renderDistVal">7</span>
-        </div>
-        <div class="setting-row">
-            <label>亮度</label>
+            <span class="val" id="renderDistVal">7</span></div>
+        <div class="setting-row"><label>亮度</label>
             <input type="range" id="brightnessSlider" min="30" max="150" value="100">
-            <span class="val" id="brightnessVal">100</span>
-        </div>
-        <div class="setting-row">
-            <label>移动速度</label>
+            <span class="val" id="brightnessVal">100</span></div>
+        <div class="setting-row"><label>移动速度</label>
             <input type="range" id="speedSlider" min="3" max="15" value="6" step="0.5">
-            <span class="val" id="speedVal">6</span>
-        </div>
-        <div class="setting-row">
-            <label>飞行模式</label>
-            <input type="checkbox" id="flyToggle">
-        </div>
+            <span class="val" id="speedVal">6</span></div>
+        <div class="setting-row"><label>飞行模式</label>
+            <input type="checkbox" id="flyToggle"></div>
         <button class="panel-btn" id="closeSettings">关闭</button>
         <button class="panel-btn" id="applyWorldBtn" style="background: rgba(180,80,80,0.9);">应用世界类型（会重置世界）</button>
     </div>
@@ -209,9 +127,6 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.min.js"></script>
     <script>
-    // ==========================================================
-    // 方块配置
-    // ==========================================================
     const BLOCK_CONFIG = {
         grass:  { name: '草方块', top: '#5fa845', side: '#7a9a4a', bottom: '#8b5a2b' },
         dirt:   { name: '泥土',   color: '#8b5a2b' },
@@ -227,20 +142,16 @@
     const CONST = {
         GRAVITY: 22, JUMP_SPEED: 8.5,
         PLAYER_W: 0.6, PLAYER_H: 1.8, EYE_H: 1.6,
-        CAVE_DEPTH_LIMIT: -6,
-        SAVE_KEY: 'minicraft_v8',
+        SAVE_KEY: 'minicraft_v9',
         FIXED_DT: 1 / 60,
         LONG_PRESS_MS: 450, MOVE_THRESHOLD: 25, SWEEP_STEP: 0.05,
-        PITCH_LIMIT: 1.45,
-        MAX_TORCH_LIGHTS: 3,   // ★ 削减到 3 个（性能）
+        PITCH_LIMIT: 1.45, MAX_TORCH_LIGHTS: 3,
     };
 
-    // ==========================================================
-    // 随机种子 & 噪声
-    // ==========================================================
     let WORLD_SEED = Math.floor(Math.random() * 1e9);
     let worldType = 'normal';
 
+    // ============ 噪声 ============
     function hash2(x, z, s) {
         let n = x * 374761393 + z * 668265263 + s * 1274126177;
         n = (n ^ (n >> 13)) * 1274126177;
@@ -252,7 +163,6 @@
         return ((n ^ (n >> 16)) >>> 0) / 4294967296;
     }
     const smooth = t => t * t * (3 - 2 * t);
-
     function noise2(x, z, s) {
         const xi = Math.floor(x), zi = Math.floor(z);
         const u = smooth(x - xi), w = smooth(z - zi);
@@ -272,13 +182,13 @@
         return (x00*(1-v) + x10*v)*(1-w) + (x01*(1-v) + x11*v)*w;
     }
 
-    // ==========================================================
-    // 生物群系 & 地形
-    // ==========================================================
+    // ============ 生物群系 & 地形 ============
+    // ★ 修复：拉伸噪声对比度，让三个 biome 分布均匀（森林约 45%）
     function getBiome(x, z) {
         const v = noise2(x * 0.008, z * 0.008, WORLD_SEED);
-        if (v < 0.35) return 'desert';
-        if (v < 0.65) return 'plains';
+        const stretched = (v - 0.5) * 3.0 + 0.5;   // 放大对比度
+        if (stretched < 0.33) return 'desert';
+        if (stretched < 0.55) return 'plains';
         return 'forest';
     }
     function getHeight(x, z) {
@@ -308,10 +218,10 @@
         const threshold = isEntrance ? 0.55 : 0.78;
         return n1 + n2 + bonus > threshold;
     }
+    // ★ 修复：提高树生成概率到 10%
     function hasTree(x, z) {
-        const biome = getBiome(x, z);
-        if (biome !== 'forest') return false;
-        return hash2(x, z, WORLD_SEED + 400) < 0.05;
+        if (getBiome(x, z) !== 'forest') return false;
+        return hash2(x, z, WORLD_SEED + 400) < 0.10;
     }
     function treeBlockAt(x, y, z) {
         for (let dx = -2; dx <= 2; dx++) {
@@ -341,22 +251,13 @@
         }
         const treeBlock = treeBlockAt(x, y, z);
         if (treeBlock && y > surface) return treeBlock;
-        if (y === surface) {
-            if (biome === 'desert') return 'sand';
-            return 'grass';
-        }
+        if (y === surface) return biome === 'desert' ? 'sand' : 'grass';
         if (y > surface) return null;
         const depth = surface - y;
-        if (depth <= 3) {
-            if (biome === 'desert') return 'sand';
-            return 'dirt';
-        }
+        if (depth <= 3) return biome === 'desert' ? 'sand' : 'dirt';
         return 'stone';
     }
 
-    // ==========================================================
-    // 世界数据
-    // ==========================================================
     const modifications = new Map();
     const worldKey = (x, y, z) => `${x},${y},${z}`;
     const getBlockType = (x, y, z) => {
@@ -368,18 +269,13 @@
     const isSolid = (x, y, z) => getBlockType(x, y, z) !== null;
     const setBlock = (x, y, z, type) => modifications.set(worldKey(x, y, z), type);
 
-    // ==========================================================
-    // 场景 & 材质
-    // ==========================================================
+    // ============ 场景 ============
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87CEEB);
     scene.fog = new THREE.Fog(0x87CEEB, 20, 55);
-
     const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 300);
     const canvasElement = document.getElementById('gameCanvas');
     const renderer = new THREE.WebGLRenderer({ canvas: canvasElement, antialias: true });
-
-    // ★ 关键修复：ACES Tone Mapping 防止过曝
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
     renderer.outputEncoding = THREE.sRGBEncoding;
@@ -400,9 +296,7 @@
             ctx.fillStyle = opts.bottomColor;
             ctx.fillRect(0, 9, 16, 7);
             ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-            ctx.beginPath();
-            ctx.moveTo(0, 9); ctx.lineTo(16, 9);
-            ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, 9); ctx.lineTo(16, 9); ctx.stroke();
         }
         ctx.strokeStyle = 'rgba(0,0,0,0.28)';
         ctx.strokeRect(0.5, 0.5, 15, 15);
@@ -414,7 +308,6 @@
 
     const BLOCK_GEOMETRY = new THREE.BoxGeometry(1, 1, 1);
     const BLOCK_MATERIALS = {};
-
     const grassTopTex = makeTexture(BLOCK_CONFIG.grass.top);
     const grassBottomTex = makeTexture(BLOCK_CONFIG.grass.bottom);
     const grassSideTex = makeTexture(BLOCK_CONFIG.grass.side, { sideSplit: true, bottomColor: BLOCK_CONFIG.grass.bottom });
@@ -438,9 +331,7 @@
     }
     const TORCH_GEOMETRY = new THREE.BoxGeometry(0.25, 0.6, 0.25);
 
-    // ==========================================================
-    // 光照（★ 强度大幅降低，防过曝）
-    // ==========================================================
+    // ============ 光照 ============
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
     const sunLight = new THREE.DirectionalLight(0xffffff, 0.55);
@@ -449,7 +340,6 @@
     const fillLight = new THREE.DirectionalLight(0xffffff, 0.15);
     fillLight.position.set(-30, -20, -30);
     scene.add(fillLight);
-
     let brightnessLevel = 100;
     function updateBrightness() {
         const v = brightnessLevel / 100;
@@ -458,7 +348,6 @@
         fillLight.intensity = 0.15 * v;
     }
 
-    // 火把点光源池（上限 3）
     const torchLights = new Map();
     function addTorchLight(x, y, z) {
         const k = worldKey(x, y, z);
@@ -487,11 +376,8 @@
         }
     }
 
-    // ==========================================================
-    // 动态渲染
-    // ==========================================================
+    // ============ 渲染 ============
     const renderedMeshes = new Map();
-
     function addMeshAt(x, y, z, type) {
         const k = worldKey(x, y, z);
         if (renderedMeshes.has(k)) return;
@@ -516,9 +402,7 @@
         if (mesh) { scene.remove(mesh); renderedMeshes.delete(k); }
         removeTorchLight(x, y, z);
     }
-
     let renderDistance = 7;
-
     function updateRender() {
         const cx = Math.floor(player.pos.x);
         const cz = Math.floor(player.pos.z);
@@ -527,7 +411,6 @@
         const R = renderDistance;
         const yMin = Math.max(1, cy - 18);
         const yMax = cy + 18;
-
         for (let dx = -R; dx <= R; dx++) {
             for (let dz = -R; dz <= R; dz++) {
                 const x = cx + dx, z = cz + dz;
@@ -561,9 +444,7 @@
         }
     }
 
-    // ==========================================================
-    // 玩家
-    // ==========================================================
+    // ============ 玩家 ============
     function randomSpawn() {
         for (let i = 0; i < 50; i++) {
             const x = (Math.random() - 0.5) * 200;
@@ -573,16 +454,11 @@
         }
         return new THREE.Vector3(0.5, 30, 0.5);
     }
-    let player = {
-        pos: randomSpawn(),
-        yaw: 0, pitch: -0.3, vy: 0, onGround: false,
-    };
+    let player = { pos: randomSpawn(), yaw: 0, pitch: -0.3, vy: 0, onGround: false };
     let moveSpeed = 6;
     let flyingMode = false;
 
-    // ==========================================================
-    // 碰撞
-    // ==========================================================
+    // ============ 碰撞 ============
     function isColliding(pos) {
         const minX = pos.x - CONST.PLAYER_W / 2, maxX = pos.x + CONST.PLAYER_W / 2;
         const minY = pos.y, maxY = pos.y + CONST.PLAYER_H;
@@ -634,10 +510,20 @@
         }
         return false;
     }
+    // ★ 修复：把卡在方块里的玩家推出到最近的空位
+    function unstickPlayer() {
+        if (!isColliding(player.pos)) return;
+        for (let dy = 0; dy < 10; dy += 0.1) {
+            const test = { x: player.pos.x, y: player.pos.y + dy, z: player.pos.z };
+            if (!isColliding(test)) {
+                player.pos.y += dy;
+                player.vy = 0;
+                return;
+            }
+        }
+    }
 
-    // ==========================================================
-    // 射线
-    // ==========================================================
+    // ============ 射线 ============
     const raycaster = new THREE.Raycaster();
     raycaster.far = 6;
     const _rayDir = new THREE.Vector3();
@@ -650,9 +536,7 @@
         return { block: h.object.userData, normal: h.face.normal.clone() };
     }
 
-    // ==========================================================
-    // 放置 / 破坏
-    // ==========================================================
+    // ============ 放置 / 破坏 ============
     function toast(msg) {
         const el = document.getElementById('toast');
         el.textContent = msg;
@@ -660,17 +544,27 @@
         clearTimeout(el._t);
         el._t = setTimeout(() => el.classList.remove('show'), 900);
     }
-    function applySandGravity(x, y, z) {
-        for (let cy = y + 1; cy < y + 20; cy++) {
-            if (getBlockType(x, cy, z) !== 'sand') break;
-            setBlock(x, cy, z, null);
-            removeMeshAt(x, cy, z);
-            let ly = cy;
-            while (ly > 0 && !isSolid(x, ly - 1, z)) ly--;
-            setBlock(x, ly, z, 'sand');
-            addMeshAt(x, ly, z, 'sand');
+
+    // ★ 修复：重写沙子重力，从下往上处理整列
+    function applyGravityToColumn(x, z, startY) {
+        const sands = [];
+        for (let y = startY; y < startY + 30; y++) {
+            if (y < 1) continue;
+            if (getBlockType(x, y, z) === 'sand') sands.push(y);
+        }
+        // 从下往上处理：最底下的沙子先落
+        for (const sy of sands) {
+            let ny = sy;
+            while (ny > 1 && !isSolid(x, ny - 1, z)) ny--;
+            if (ny !== sy) {
+                setBlock(x, sy, z, null);
+                removeMeshAt(x, sy, z);
+                setBlock(x, ny, z, 'sand');
+                addMeshAt(x, ny, z, 'sand');
+            }
         }
     }
+
     function tryPlace() {
         const hit = raycast();
         if (!hit) return toast('没对准方块');
@@ -685,7 +579,8 @@
             return toast('会卡住自己');
         setBlock(tx, ty, tz, currentBlock);
         addMeshAt(tx, ty, tz, currentBlock);
-        if (currentBlock === 'sand') applySandGravity(tx, ty, tz);
+        // 沙子落到地面
+        if (currentBlock === 'sand') applyGravityToColumn(tx, tz, ty);
         scheduleSave();
     }
     function tryBreak() {
@@ -698,28 +593,19 @@
         if (x === footX && y === footY && z === footZ) return toast('不能挖脚下');
         setBlock(x, y, z, null);
         removeMeshAt(x, y, z);
-        applySandGravity(x, y, z);
+        // 上方的沙子落下来
+        applyGravityToColumn(x, z, y + 1);
         scheduleSave();
     }
 
-    // ==========================================================
-    // 存档
-    // ==========================================================
+    // ============ 存档 ============
     let saveTimer = null;
-    function scheduleSave() {
-        clearTimeout(saveTimer);
-        saveTimer = setTimeout(saveToLocal, 500);
-    }
+    function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveToLocal, 500); }
     function getSaveData() {
         return {
-            version: 8,
-            seed: WORLD_SEED,
-            worldType,
+            version: 9, seed: WORLD_SEED, worldType,
             modifications: [...modifications],
-            player: {
-                x: player.pos.x, y: player.pos.y, z: player.pos.z,
-                yaw: player.yaw, pitch: player.pitch,
-            },
+            player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch },
             currentBlock,
             settings: { renderDistance, brightnessLevel, moveSpeed, flyingMode },
         };
@@ -798,8 +684,7 @@
     }
     function exportSave() {
         saveToLocal();
-        const data = getSaveData();
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify(getSaveData(), null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         const now = new Date();
@@ -820,10 +705,8 @@
         reader.onload = ev => {
             try {
                 const data = JSON.parse(ev.target.result);
-                if (applySaveData(data)) {
-                    saveToLocal();
-                    toast('已导入存档');
-                } else toast('存档格式错误');
+                if (applySaveData(data)) { saveToLocal(); toast('已导入存档'); }
+                else toast('存档格式错误');
             } catch (err) { toast('读取失败'); }
         };
         reader.readAsText(file);
@@ -839,18 +722,12 @@
         for (const light of torchLights.values()) scene.remove(light);
         renderedMeshes.clear();
         torchLights.clear();
-        player = {
-            pos: randomSpawn(),
-            yaw: Math.random() * Math.PI * 2,
-            pitch: -0.3, vy: 0, onGround: false,
-        };
+        player = { pos: randomSpawn(), yaw: Math.random() * Math.PI * 2, pitch: -0.3, vy: 0, onGround: false };
         updateRender();
         toast('新世界已生成');
     }
 
-    // ==========================================================
-    // 输入
-    // ==========================================================
+    // ============ 输入 ============
     let moveInput = { x: 0, y: 0 };
     let jumpRequested = false;
     let currentBlock = 'grass';
@@ -866,9 +743,7 @@
         hotbarSlots.push(slot);
     }
     function updateHotbarSelection() {
-        hotbarSlots.forEach((s, i) => {
-            s.classList.toggle('selected', HOTBAR_ORDER[i] === currentBlock);
-        });
+        hotbarSlots.forEach((s, i) => s.classList.toggle('selected', HOTBAR_ORDER[i] === currentBlock));
     }
 
     const joystick = document.getElementById('joystick');
@@ -899,7 +774,6 @@
         return Math.hypot(x - cx, y - cy) <= Math.min(r.width, r.height) / 2;
     };
     const pointInRect = (x, y, r) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
-
     function isInModal(x, y) {
         const sp = document.getElementById('settingsPanel');
         const ip = document.getElementById('inventoryPanel');
@@ -929,19 +803,13 @@
 
     const activeTouches = new Map();
 
-    // ★★★ 关键修复：只要触摸落在弹窗内，直接放行给 DOM ★★★
     document.addEventListener('touchstart', e => {
-        // 检查是否在弹窗内
         let anyInModal = false;
         for (const t of e.changedTouches) {
             if (isInModal(t.clientX, t.clientY)) { anyInModal = true; break; }
         }
-        // 弹窗打开时，触摸落在弹窗外也可以忽略；落在弹窗内则完全放行
         if (anyInModal) return;
-        if (isModalOpen()) {
-            // 弹窗打开时点击弹窗外的区域 → 关闭弹窗
-            return;
-        }
+        if (isModalOpen()) return;
 
         const ui = getUIElements();
         for (const t of e.changedTouches) {
@@ -990,9 +858,7 @@
     }, { passive: false });
 
     document.addEventListener('touchmove', e => {
-        for (const t of e.changedTouches) {
-            if (isInModal(t.clientX, t.clientY)) return;
-        }
+        for (const t of e.changedTouches) if (isInModal(t.clientX, t.clientY)) return;
         for (const t of e.changedTouches) {
             const info = activeTouches.get(t.identifier);
             if (!info) continue;
@@ -1017,9 +883,7 @@
     }, { passive: false });
 
     document.addEventListener('touchend', e => {
-        for (const t of e.changedTouches) {
-            if (isInModal(t.clientX, t.clientY)) return;
-        }
+        for (const t of e.changedTouches) if (isInModal(t.clientX, t.clientY)) return;
         for (const t of e.changedTouches) {
             const info = activeTouches.get(t.identifier);
             if (!info) continue;
@@ -1042,9 +906,7 @@
         }
     });
 
-    // ==========================================================
-    // 物理
-    // ==========================================================
+    // ============ 物理 ============
     function physicsStep(dt) {
         const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
         const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
@@ -1052,14 +914,25 @@
         move.addScaledVector(forward, -moveInput.y);
         move.addScaledVector(right, moveInput.x);
         if (move.length() > 1) move.normalize();
-        sweepMove('x', move.x * moveSpeed * dt);
-        sweepMove('z', move.z * moveSpeed * dt);
+
+        // ★ 修复：飞行模式 - 悬停 + 跳键上升，水平移动保留
         if (flyingMode) {
-            if (jumpRequested) player.pos.y += moveSpeed * dt;
-            else player.pos.y -= moveSpeed * 0.5 * dt;
+            sweepMove('x', move.x * moveSpeed * dt);
+            sweepMove('z', move.z * moveSpeed * dt);
+            if (jumpRequested) {
+                const tryPos = player.pos.clone();
+                tryPos.y += moveSpeed * dt;
+                if (!isColliding(tryPos)) player.pos.y = tryPos.y;
+            }
             jumpRequested = false;
+            player.vy = 0;
+            player.onGround = false;
             return;
         }
+
+        sweepMove('x', move.x * moveSpeed * dt);
+        sweepMove('z', move.z * moveSpeed * dt);
+
         if (jumpRequested && player.onGround) {
             player.vy = CONST.JUMP_SPEED;
             player.onGround = false;
@@ -1087,9 +960,7 @@
         }
     }
 
-    // ==========================================================
-    // 相机：显式四元数
-    // ==========================================================
+    // ============ 相机 ============
     const _yAxis = new THREE.Vector3(0, 1, 0);
     const _xAxis = new THREE.Vector3(1, 0, 0);
     const _yawQuat = new THREE.Quaternion();
@@ -1100,26 +971,18 @@
         _pitchQuat.setFromAxisAngle(_xAxis, player.pitch);
         camera.quaternion.copy(_yawQuat).multiply(_pitchQuat);
         const e = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
-        if (Math.abs(e.z) > 1e-6) {
-            e.z = 0;
-            camera.quaternion.setFromEuler(e);
-        }
+        if (Math.abs(e.z) > 1e-6) { e.z = 0; camera.quaternion.setFromEuler(e); }
     }
 
-    // ==========================================================
-    // 面板事件（★ 全部改用 pointerdown，避免被 touchstart preventDefault 拦截）
-    // ==========================================================
+    // ============ 面板事件 ============
     function bindTap(el, handler) {
         el.addEventListener('pointerdown', e => {
-            e.preventDefault();
-            e.stopPropagation();
+            e.preventDefault(); e.stopPropagation();
             handler();
         });
     }
-
     const settingsPanel = document.getElementById('settingsPanel');
     const inventoryPanel = document.getElementById('inventoryPanel');
-
     function openSettings() { settingsPanel.classList.add('show'); }
     function closeSettings() { settingsPanel.classList.remove('show'); }
     function openInventory() {
@@ -1128,12 +991,10 @@
         for (const k in BLOCK_CONFIG) {
             const slot = document.createElement('div');
             slot.className = 'inv-slot' + (k === currentBlock ? ' selected' : '');
-            slot.dataset.type = k;
             slot.style.background = BLOCK_CONFIG[k].color || BLOCK_CONFIG[k].top;
             slot.textContent = BLOCK_CONFIG[k].name;
             slot.addEventListener('pointerdown', e => {
-                e.preventDefault();
-                e.stopPropagation();
+                e.preventDefault(); e.stopPropagation();
                 currentBlock = k;
                 updateHotbarSelection();
                 openInventory();
@@ -1157,7 +1018,6 @@
         closeSettings();
         resetWorld(t);
     });
-
     document.getElementById('renderDistSlider').addEventListener('input', e => {
         renderDistance = Number(e.target.value);
         document.getElementById('renderDistVal').textContent = renderDistance;
@@ -1172,17 +1032,20 @@
         moveSpeed = Number(e.target.value);
         document.getElementById('speedVal').textContent = moveSpeed;
     });
+    // ★ 修复：切换飞行模式时如果卡住则推出
     document.getElementById('flyToggle').addEventListener('change', e => {
         flyingMode = e.target.checked;
+        if (!flyingMode) {
+            player.vy = 0;
+            unstickPlayer();
+        }
     });
 
-    // ==========================================================
-    // 主循环
-    // ==========================================================
+    // ============ 主循环 ============
     function resizeRenderer() {
         const w = document.documentElement.clientWidth || window.innerWidth;
         const h = document.documentElement.clientHeight || window.innerHeight;
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));  // 降到 1.5 提升性能
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
         renderer.setSize(w, h, false);
         canvasElement.style.width = w + 'px';
         canvasElement.style.height = h + 'px';
@@ -1199,7 +1062,6 @@
         const now = performance.now();
         const frameTime = Math.min((now - lastTime) / 1000, 0.1);
         lastTime = now;
-
         resizeTimer += frameTime;
         if (resizeTimer > 2) {
             resizeTimer = 0;
@@ -1207,7 +1069,6 @@
             const h = document.documentElement.clientHeight || window.innerHeight;
             if (Math.abs(camera.aspect - w / h) > 0.01) resizeRenderer();
         }
-
         accumulator += frameTime;
         let steps = 0;
         while (accumulator >= CONST.FIXED_DT && steps < 5) {
@@ -1215,20 +1076,15 @@
             accumulator -= CONST.FIXED_DT;
             steps++;
         }
-
         if (player.pos.y < -30) {
             player.pos = randomSpawn();
             player.vy = 0; player.onGround = false;
         }
-
         renderTimer += frameTime;
-        if (renderTimer > 0.25) { renderTimer = 0; updateRender(); }  // 降到每秒 4 次
-
+        if (renderTimer > 0.25) { renderTimer = 0; updateRender(); }
         sunLight.position.set(player.pos.x + 30, player.pos.y + 50, player.pos.z + 30);
-
         updateCamera();
         renderer.render(scene, camera);
-
         fpsCount++; fpsTimer += frameTime; hudTimer += frameTime;
         if (hudTimer >= 0.5) {
             hud.innerHTML =
@@ -1238,7 +1094,6 @@
                 `方块: ${renderedMeshes.size} | 种子: ${WORLD_SEED}`;
             fpsCount = 0; fpsTimer = 0; hudTimer = 0;
         }
-
         requestAnimationFrame(update);
     }
 
