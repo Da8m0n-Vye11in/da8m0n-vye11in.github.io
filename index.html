@@ -12,6 +12,20 @@
             position: fixed; font-family: ui-monospace, "Menlo", monospace;
         }
         #gameCanvas { display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+
+        /* 十字准星 */
+        #crosshair {
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 28px; height: 28px; pointer-events: none; z-index: 10;
+        }
+        #crosshair::before, #crosshair::after {
+            content: ''; position: absolute; background: white;
+            box-shadow: 0 0 3px black;
+        }
+        #crosshair::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+        #crosshair::after  { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+
         #hud {
             position: fixed; top: 16px; left: 16px;
             color: white; font-size: 11px; line-height: 1.55;
@@ -19,39 +33,37 @@
             background: rgba(0,0,0,0.42); padding: 6px 10px; border-radius: 4px;
             z-index: 100; pointer-events: none;
         }
+
+        /* 顶部按钮 */
+        #topBar {
+            position: fixed; top: 16px; right: 16px;
+            display: flex; gap: 6px; z-index: 100; pointer-events: none;
+        }
+        .mc-btn {
+            padding: 10px 14px;
+            background: rgba(0, 0, 0, 0.55);
+            border: 2px solid rgba(255, 255, 255, 0.35);
+            border-radius: 4px;
+            color: white; font-size: 13px; font-family: inherit;
+        }
+
+        /* 快捷栏 */
         #hotbar {
-            position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 4px; padding: 4px;
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 3px; padding: 4px;
             background: rgba(0, 0, 0, 0.55);
             border: 2px solid rgba(255, 255, 255, 0.35);
             border-radius: 4px; z-index: 100; pointer-events: none;
         }
         .hotbar-slot {
-            width: 52px; height: 52px; border-radius: 2px;
+            width: 46px; height: 46px; border-radius: 2px;
             background: rgba(80, 80, 80, 0.6);
             border: 2px solid rgba(255, 255, 255, 0.2);
             position: relative;
         }
-        .hotbar-slot.selected {
-            border: 3px solid #ffffff;
-            box-shadow: 0 0 8px rgba(255,255,255,0.8);
-        }
-        .hotbar-slot .label {
-            position: absolute; bottom: 1px; right: 3px;
-            font-size: 9px; color: rgba(255,255,255,0.85);
-        }
-        #topBar {
-            position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 6px; z-index: 100; pointer-events: none;
-        }
-        .mc-btn {
-            padding: 10px 16px;
-            background: rgba(0, 0, 0, 0.55);
-            border: 2px solid rgba(255, 255, 255, 0.35);
-            border-radius: 4px;
-            color: white; font-size: 13px; font-family: inherit;
-            white-space: nowrap;
-        }
+        .hotbar-slot.selected { border: 3px solid #fff; box-shadow: 0 0 8px rgba(255,255,255,0.8); }
+
+        /* 摇杆 & 跳跃 */
         #joystick {
             position: fixed; left: 30px; bottom: 100px;
             width: 130px; height: 130px; border-radius: 50%;
@@ -72,14 +84,16 @@
             text-align: center; line-height: 78px;
             z-index: 100; pointer-events: none;
         }
+
         #longpressHint {
             position: fixed; pointer-events: none; z-index: 50;
             width: 80px; height: 80px; border-radius: 50%;
             border: 3px solid rgba(255, 60, 60, 0.9);
             transform: translate(-50%, -50%) scale(0);
-            transition: transform 0.12s ease-out;
+            transition: transform 0.12s;
         }
         #longpressHint.active { transform: translate(-50%, -50%) scale(1); }
+
         #toast {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
             padding: 14px 24px;
@@ -91,58 +105,353 @@
             opacity: 0; transition: opacity 0.25s;
         }
         #toast.show { opacity: 1; }
+
+        /* 设置面板 */
+        #settingsPanel {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 340px; max-width: 90vw;
+            background: rgba(30, 30, 40, 0.95);
+            border: 3px solid rgba(255, 255, 255, 0.4);
+            border-radius: 8px;
+            color: white;
+            padding: 18px;
+            z-index: 300;
+            display: none;
+            pointer-events: auto;
+            font-size: 13px;
+        }
+        #settingsPanel.show { display: block; }
+        #settingsPanel h3 { margin-bottom: 12px; text-align: center; font-size: 16px; }
+        .setting-row {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 12px; gap: 10px;
+        }
+        .setting-row label { flex: 1; }
+        .setting-row input[type=range] { flex: 1.2; }
+        .setting-row .val { width: 40px; text-align: right; color: #ffd966; }
+        .setting-row select, .setting-row input[type=checkbox] {
+            padding: 6px; border-radius: 4px; background: #222; color: white;
+            border: 1px solid #666; font-family: inherit;
+        }
+        .setting-row input[type=checkbox] { width: 22px; height: 22px; }
+        .panel-btn {
+            display: block; width: 100%; padding: 10px;
+            margin-top: 8px; background: rgba(80, 120, 180, 0.85);
+            color: white; border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 4px; font-size: 14px; font-family: inherit;
+        }
+
+        /* 背包 */
+        #inventoryPanel {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 360px; max-width: 90vw;
+            background: rgba(30, 30, 40, 0.95);
+            border: 3px solid rgba(255, 255, 255, 0.4);
+            border-radius: 8px;
+            color: white; padding: 16px;
+            z-index: 300; display: none;
+            pointer-events: auto; font-size: 13px;
+        }
+        #inventoryPanel.show { display: block; }
+        #inventoryPanel h3 { margin-bottom: 12px; text-align: center; font-size: 16px; }
+        #inventoryGrid {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+        }
+        .inv-slot {
+            aspect-ratio: 1; border-radius: 4px;
+            border: 2px solid rgba(255,255,255,0.3);
+            position: relative;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 11px; text-shadow: 1px 1px 1px black;
+        }
+        .inv-slot.selected { border-color: #ffd966; box-shadow: 0 0 8px #ffd966; }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
+    <div id="crosshair"></div>
     <div id="hud">加载中...</div>
+
     <div id="topBar">
-        <div class="mc-btn" id="saveBtn">💾 导出</div>
-        <div class="mc-btn" id="loadBtn">📂 导入</div>
-        <div class="mc-btn" id="resetBtn">🔄 新世界</div>
+        <div class="mc-btn" id="settingsBtn">⚙️</div>
+        <div class="mc-btn" id="inventoryBtn">🎒</div>
+        <div class="mc-btn" id="saveBtn">💾</div>
+        <div class="mc-btn" id="loadBtn">📂</div>
+        <div class="mc-btn" id="resetBtn">🔄</div>
     </div>
+
     <div id="hotbar"></div>
     <div id="joystick"><div id="joystick-knob"></div></div>
     <div id="jumpBtn">跳</div>
     <div id="longpressHint"></div>
     <div id="toast"></div>
+
+    <div id="settingsPanel">
+        <h3>⚙️ 设置</h3>
+        <div class="setting-row">
+            <label>世界类型</label>
+            <select id="worldTypeSelect">
+                <option value="normal">普通世界</option>
+                <option value="flat">超平坦</option>
+            </select>
+        </div>
+        <div class="setting-row">
+            <label>渲染距离</label>
+            <input type="range" id="renderDistSlider" min="4" max="16" value="9">
+            <span class="val" id="renderDistVal">9</span>
+        </div>
+        <div class="setting-row">
+            <label>亮度</label>
+            <input type="range" id="brightnessSlider" min="30" max="150" value="80">
+            <span class="val" id="brightnessVal">80</span>
+        </div>
+        <div class="setting-row">
+            <label>移动速度</label>
+            <input type="range" id="speedSlider" min="3" max="15" value="6" step="0.5">
+            <span class="val" id="speedVal">6</span>
+        </div>
+        <div class="setting-row">
+            <label>飞行模式</label>
+            <input type="checkbox" id="flyToggle">
+        </div>
+        <button class="panel-btn" id="closeSettings">关闭</button>
+        <button class="panel-btn" id="applyWorldBtn" style="background: rgba(180,80,80,0.85);">应用世界类型（会重置世界）</button>
+    </div>
+
+    <div id="inventoryPanel">
+        <h3>🎒 背包</h3>
+        <div id="inventoryGrid"></div>
+        <button class="panel-btn" id="closeInventory" style="margin-top:12px;">关闭</button>
+    </div>
+
     <input type="file" id="fileInput" accept=".json" style="display:none">
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.min.js"></script>
     <script>
+    // ==========================================================
+    // 方块配置
+    // ==========================================================
     const BLOCK_CONFIG = {
-        grass: { name: '草方块', color: '#5fa845' },
-        dirt:  { name: '泥土',   color: '#8b5a2b' },
-        stone: { name: '石头',   color: '#888888' },
-        wood:  { name: '木头',   color: '#6b4423' },
+        grass:  { name: '草方块', top: '#5fa845', side: '#7a9a4a', bottom: '#8b5a2b' },
+        dirt:   { name: '泥土',   color: '#8b5a2b' },
+        stone:  { name: '石头',   color: '#888888' },
+        wood:   { name: '原木',   color: '#6b4423' },
+        plank:  { name: '木板',   color: '#b88a4a' },
+        leaves: { name: '树叶',   color: '#3d7a1e' },
+        sand:   { name: '沙子',   color: '#e6d8a8', gravity: true },
+        torch:  { name: '火把',   color: '#ffcc33', light: true, emissive: true },
     };
-    const HOTBAR_ORDER = ['grass', 'dirt', 'stone', 'wood'];
+    const HOTBAR_ORDER = ['grass', 'dirt', 'stone', 'wood', 'plank', 'leaves', 'sand', 'torch'];
 
     const CONST = {
-        GRAVITY: 22, JUMP_SPEED: 8.5, MOVE_SPEED: 6,
+        GRAVITY: 22, JUMP_SPEED: 8.5,
         PLAYER_W: 0.6, PLAYER_H: 1.8, EYE_H: 1.6,
-        RENDER_RADIUS: 9, CAVE_DEPTH_LIMIT: -12,
-        SAVE_KEY: 'minicraft_v6',
+        CAVE_DEPTH_LIMIT: -6,
+        SAVE_KEY: 'minicraft_v7',
         FIXED_DT: 1 / 60,
         LONG_PRESS_MS: 450, MOVE_THRESHOLD: 25, SWEEP_STEP: 0.05,
-        // ★ 更保守的 pitch 上限，避免接近 ±90° 的奇异点
         PITCH_LIMIT: 1.45,
+        MAX_LIGHTS: 12,
     };
 
-    // ============ 纹理 ============
-    function makeBlockTexture(hexColor) {
+    // ==========================================================
+    // 随机种子 & 噪声
+    // ==========================================================
+    let WORLD_SEED = Math.floor(Math.random() * 1e9);
+    let worldType = 'normal';
+
+    function hash2(x, z, s) {
+        let n = x * 374761393 + z * 668265263 + s * 1274126177;
+        n = (n ^ (n >> 13)) * 1274126177;
+        return ((n ^ (n >> 16)) >>> 0) / 4294967296;
+    }
+    function hash3(x, y, z, s) {
+        let n = x * 374761393 + y * 668265263 + z * 1274126177 + s * 13579;
+        n = (n ^ (n >> 13)) * 1274126177;
+        return ((n ^ (n >> 16)) >>> 0) / 4294967296;
+    }
+    const smooth = t => t * t * (3 - 2 * t);
+
+    function noise2(x, z, s) {
+        const xi = Math.floor(x), zi = Math.floor(z);
+        const u = smooth(x - xi), w = smooth(z - zi);
+        const c00 = hash2(xi, zi, s),     c10 = hash2(xi+1, zi, s);
+        const c01 = hash2(xi, zi+1, s),   c11 = hash2(xi+1, zi+1, s);
+        return c00*(1-u)*(1-w) + c10*u*(1-w) + c01*(1-u)*w + c11*u*w;
+    }
+
+    function noise3(x, y, z, s) {
+        const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+        const u = smooth(x - xi), v = smooth(y - yi), w = smooth(z - zi);
+        const c000 = hash3(xi, yi, zi, s),     c100 = hash3(xi+1, yi, zi, s);
+        const c010 = hash3(xi, yi+1, zi, s),   c110 = hash3(xi+1, yi+1, zi, s);
+        const c001 = hash3(xi, yi, zi+1, s),   c101 = hash3(xi+1, yi, zi+1, s);
+        const c011 = hash3(xi, yi+1, zi+1, s), c111 = hash3(xi+1, yi+1, zi+1, s);
+        const x00 = c000*(1-u) + c100*u, x10 = c010*(1-u) + c110*u;
+        const x01 = c001*(1-u) + c101*u, x11 = c011*(1-u) + c111*u;
+        return (x00*(1-v) + x10*v)*(1-w) + (x01*(1-v) + x11*v)*w;
+    }
+
+    // ==========================================================
+    // 生物群系 & 地形
+    // ==========================================================
+    function getBiome(x, z) {
+        const v = noise2(x * 0.008, z * 0.008, WORLD_SEED);
+        if (v < 0.35) return 'desert';
+        if (v < 0.65) return 'plains';
+        return 'forest';
+    }
+
+    function getHeight(x, z) {
+        if (worldType === 'flat') return 20;
+
+        const biome = getBiome(x, z);
+        let h;
+        if (biome === 'desert') {
+            h = 18 + noise2(x * 0.1, z * 0.1, WORLD_SEED + 1) * 4;
+            h += noise2(x * 0.03, z * 0.03, WORLD_SEED + 2) * 3;
+        } else if (biome === 'plains') {
+            h = 20 + noise2(x * 0.15, z * 0.15, WORLD_SEED + 3) * 3;
+        } else {
+            h = 22 + noise2(x * 0.2, z * 0.2, WORLD_SEED + 4) * 5;
+            h += noise2(x * 0.05, z * 0.05, WORLD_SEED + 5) * 4;
+        }
+        return Math.floor(h);
+    }
+
+    // 洞穴：3D 噪声，1/10 的地方有地表入口
+    function isCave(x, y, z) {
+        if (y < 1) return false;
+        const surface = getHeight(x, z);
+        if (y > surface - 2) return false;
+
+        const n1 = noise3(x * 0.09, y * 0.14, z * 0.09, WORLD_SEED + 100);
+        const n2 = noise3(x * 0.18, y * 0.22, z * 0.18, WORLD_SEED + 200) * 0.5;
+        const depth = surface - y;
+        const bonus = Math.min(depth / 20, 0.15);
+
+        // 地表入口：1/10 位置
+        const isEntrance = hash2(x, z, WORLD_SEED + 300) < 0.1 && depth < 4;
+        const threshold = isEntrance ? 0.55 : 0.78;
+
+        return n1 + n2 + bonus > threshold;
+    }
+
+    // 树：5% 概率生成于森林
+    function hasTree(x, z) {
+        const biome = getBiome(x, z);
+        if (biome !== 'forest') return false;
+        return hash2(x, z, WORLD_SEED + 400) < 0.05;
+    }
+
+    // 计算 (x,y,z) 是否是树干/树叶
+    function treeBlockAt(x, y, z) {
+        for (let dx = -2; dx <= 2; dx++) {
+            for (let dz = -2; dz <= 2; dz++) {
+                const tx = x + dx, tz = z + dz;
+                if (!hasTree(tx, tz)) continue;
+                const baseY = getHeight(tx, tz) + 1;
+                const th = 3 + Math.floor(hash2(tx, tz, WORLD_SEED + 500) * 3);
+                const topY = baseY + th - 1;
+
+                // 树干
+                if (x === tx && z === tz && y >= baseY && y < baseY + th) return 'wood';
+
+                // 树叶（3x3x3，围绕顶部）
+                if (y >= topY && y <= topY + 1 &&
+                    Math.abs(x - tx) <= 1 && Math.abs(z - tz) <= 1) {
+                    if (x === tx && z === tz && y === topY) continue;
+                    return 'leaves';
+                }
+            }
+        }
+        return null;
+    }
+
+    // ==========================================================
+    // 方块生成（核心）
+    // ==========================================================
+    function generateBlock(x, y, z) {
+        if (y < 0) return null;
+        if (y === 0) return 'bedrock';
+
+        const surface = getHeight(x, z);
+        const biome = getBiome(x, z);
+
+        // 洞穴
+        if (y < surface - 1 && isCave(x, y, z)) {
+            // 检查是否是树干穿过
+            const t = treeBlockAt(x, y, z);
+            if (t) return t;
+            return null;
+        }
+
+        // 树
+        const treeBlock = treeBlockAt(x, y, z);
+        if (treeBlock && y > surface) return treeBlock;
+
+        if (y === surface) {
+            if (biome === 'desert') return 'sand';
+            return 'grass';
+        }
+        if (y > surface) return null;
+
+        const depth = surface - y;
+        if (depth <= 3) {
+            if (biome === 'desert') return 'sand';
+            return 'dirt';
+        }
+        return 'stone';
+    }
+
+    // ==========================================================
+    // 世界数据
+    // ==========================================================
+    const modifications = new Map();
+    const worldKey = (x, y, z) => `${x},${y},${z}`;
+    const getBlockType = (x, y, z) => {
+        const k = worldKey(x, y, z);
+        if (modifications.has(k)) return modifications.get(k);
+        if (y === 0) return 'bedrock';
+        return generateBlock(x, y, z);
+    };
+    const isSolid = (x, y, z) => getBlockType(x, y, z) !== null;
+    const isBedrock = (x, y, z) => getBlockType(x, y, z) === 'bedrock';
+    const setBlock = (x, y, z, type) => modifications.set(worldKey(x, y, z), type);
+
+    // ==========================================================
+    // 场景 & 材质
+    // ==========================================================
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB);
+    scene.fog = new THREE.Fog(0x87CEEB, 20, 55);
+
+    const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 300);
+    const canvasElement = document.getElementById('gameCanvas');
+    const renderer = new THREE.WebGLRenderer({ canvas: canvasElement, antialias: true });
+
+    function makeTexture(color, opts = {}) {
         const c = document.createElement('canvas');
         c.width = c.height = 16;
         const ctx = c.getContext('2d');
-        ctx.fillStyle = hexColor;
+        ctx.fillStyle = color;
         ctx.fillRect(0, 0, 16, 16);
-        for (let i = 0; i < 100; i++) {
+        for (let i = 0; i < 80; i++) {
             const x = (Math.random() * 16) | 0, y = (Math.random() * 16) | 0;
-            const a = (Math.random() * 0.35).toFixed(2);
+            const a = (Math.random() * 0.3).toFixed(2);
             ctx.fillStyle = Math.random() > 0.5 ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a})`;
             ctx.fillRect(x, y, 1, 1);
         }
-        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+        if (opts.sideSplit && opts.bottomColor) {
+            // 侧面：下半是泥土
+            ctx.fillStyle = opts.bottomColor;
+            ctx.fillRect(0, 9, 16, 7);
+            ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+            ctx.beginPath();
+            ctx.moveTo(0, 9); ctx.lineTo(16, 9);
+            ctx.stroke();
+        }
+        ctx.strokeStyle = 'rgba(0,0,0,0.28)';
         ctx.strokeRect(0.5, 0.5, 15, 15);
         const tex = new THREE.CanvasTexture(c);
         tex.magFilter = THREE.NearestFilter;
@@ -152,135 +461,131 @@
 
     const BLOCK_GEOMETRY = new THREE.BoxGeometry(1, 1, 1);
     const BLOCK_MATERIALS = {};
+
+    // 草方块：三材质（top=草，bottom=泥土，side=草+泥土）
+    const grassTopTex = makeTexture(BLOCK_CONFIG.grass.top);
+    const grassBottomTex = makeTexture(BLOCK_CONFIG.grass.bottom);
+    const grassSideTex = makeTexture(BLOCK_CONFIG.grass.side, { sideSplit: true, bottomColor: BLOCK_CONFIG.grass.bottom });
+    BLOCK_MATERIALS.grass = [
+        new THREE.MeshLambertMaterial({ map: grassSideTex }),   // px
+        new THREE.MeshLambertMaterial({ map: grassSideTex }),   // nx
+        new THREE.MeshLambertMaterial({ map: grassTopTex }),    // py (top)
+        new THREE.MeshLambertMaterial({ map: grassBottomTex }), // ny (bottom)
+        new THREE.MeshLambertMaterial({ map: grassSideTex }),   // pz
+        new THREE.MeshLambertMaterial({ map: grassSideTex }),   // nz
+    ];
+
     for (const k in BLOCK_CONFIG) {
-        BLOCK_MATERIALS[k] = new THREE.MeshLambertMaterial({ map: makeBlockTexture(BLOCK_CONFIG[k].color) });
+        if (k === 'grass') continue;
+        const cfg = BLOCK_CONFIG[k];
+        const mat = new THREE.MeshLambertMaterial({ map: makeTexture(cfg.color) });
+        if (cfg.emissive) {
+            mat.emissive = new THREE.Color(cfg.color);
+            mat.emissiveIntensity = 0.8;
+        }
+        BLOCK_MATERIALS[k] = mat;
     }
 
-    // ============ 噪声 & 地形 ============
-    function hash3(x, y, z) {
-        let n = x * 374761393 + y * 668265263 + z * 1274126177;
-        n = (n ^ (n >> 13)) * 1274126177;
-        return ((n ^ (n >> 16)) >>> 0) / 4294967295;
-    }
-    const smooth = t => t * t * (3 - 2 * t);
-    function noise3(x, y, z) {
-        const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
-        const u = smooth(x - xi), v = smooth(y - yi), w = smooth(z - zi);
-        const c000 = hash3(xi, yi, zi),     c100 = hash3(xi+1, yi, zi);
-        const c010 = hash3(xi, yi+1, zi),   c110 = hash3(xi+1, yi+1, zi);
-        const c001 = hash3(xi, yi, zi+1),   c101 = hash3(xi+1, yi, zi+1);
-        const c011 = hash3(xi, yi+1, zi+1), c111 = hash3(xi+1, yi+1, zi+1);
-        const x00 = c000*(1-u) + c100*u, x10 = c010*(1-u) + c110*u;
-        const x01 = c001*(1-u) + c101*u, x11 = c011*(1-u) + c111*u;
-        return (x00*(1-v) + x10*v)*(1-w) + (x01*(1-v) + x11*v)*w;
-    }
-    function terrainHeight(x, z) {
-        return Math.round(
-            Math.sin(x * 0.15) * 1.3 + Math.cos(z * 0.18) * 1.1 +
-            Math.sin((x + z) * 0.10) * 0.9 + Math.cos((x - z) * 0.13) * 0.7 +
-            Math.sin(x * 0.05) * 1.8 + Math.cos(z * 0.07) * 1.4
-        );
-    }
-    function isCave(x, y, z) {
-        if (y >= terrainHeight(x, z) - 2) return false;
-        if (y < CONST.CAVE_DEPTH_LIMIT) return false;
-        const n1 = noise3(x * 0.09, y * 0.14, z * 0.09);
-        const n2 = noise3(x * 0.18 + 50, y * 0.22 + 50, z * 0.18 + 50) * 0.5;
-        const depth = terrainHeight(x, z) - y;
-        return n1 + n2 + Math.min(depth / 20, 0.15) > 0.75;
-    }
-    function generateBlock(x, y, z) {
-        const h = terrainHeight(x, z);
-        if (y > h) return null;
-        if (y < h - 2 && isCave(x, y, z)) return null;
-        if (y === h) return 'grass';
-        if (y === h - 1) return 'dirt';
-        if (y >= h - 4) return 'stone';
-        if (y >= CONST.CAVE_DEPTH_LIMIT - 2) return 'stone';
-        return null;
-    }
+    // 火把用小立方体
+    const TORCH_GEOMETRY = new THREE.BoxGeometry(0.25, 0.6, 0.25);
 
-    const modifications = new Map();
-    const worldKey = (x, y, z) => `${x},${y},${z}`;
-    const getBlockType = (x, y, z) => {
+    // ==========================================================
+    // 光照系统
+    // ==========================================================
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(ambientLight);
+
+    const sunLight = new THREE.DirectionalLight(0xffffff, 0.75);
+    sunLight.position.set(30, 50, 30);
+    scene.add(sunLight);
+
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.25);
+    fillLight.position.set(-30, -20, -30);
+    scene.add(fillLight);
+
+    let brightnessLevel = 80;  // 0-150
+
+    // 火把点光源池
+    const torchLights = new Map();  // key -> PointLight
+    function addTorchLight(x, y, z) {
         const k = worldKey(x, y, z);
-        return modifications.has(k) ? modifications.get(k) : generateBlock(x, y, z);
-    };
-    const isSolid = (x, y, z) => getBlockType(x, y, z) !== null;
-    const setBlock = (x, y, z, type) => modifications.set(worldKey(x, y, z), type);
-
-    // ============ 场景 ============
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87CEEB);
-    scene.fog = new THREE.Fog(0x87CEEB, 20, 55);
-
-    const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 200);
-
-    const canvasElement = document.getElementById('gameCanvas');
-    const renderer = new THREE.WebGLRenderer({ canvas: canvasElement, antialias: true });
-
-    function resizeRenderer() {
-        const w = document.documentElement.clientWidth || window.innerWidth;
-        const h = document.documentElement.clientHeight || window.innerHeight;
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.setSize(w, h, false);
-        canvasElement.style.width = w + 'px';
-        canvasElement.style.height = h + 'px';
-        camera.aspect = w / h;
-        camera.updateProjectionMatrix();
+        if (torchLights.has(k)) return;
+        const light = new THREE.PointLight(0xffcc55, 1.2, 12);
+        light.position.set(x + 0.5, y + 0.3, z + 0.5);
+        scene.add(light);
+        torchLights.set(k, light);
+        pruneTorchLights();
     }
-    resizeRenderer();
+    function removeTorchLight(x, y, z) {
+        const k = worldKey(x, y, z);
+        const light = torchLights.get(k);
+        if (light) { scene.remove(light); torchLights.delete(k); }
+    }
+    function pruneTorchLights() {
+        if (torchLights.size <= CONST.MAX_LIGHTS) return;
+        // 按与玩家距离排序，删除最远的
+        const entries = [...torchLights.entries()].map(([k, l]) => {
+            const [x, y, z] = k.split(',').map(Number);
+            const d = Math.hypot(x - player.pos.x, y - player.pos.y, z - player.pos.z);
+            return { k, l, d };
+        }).sort((a, b) => a.d - b.d);
+        for (let i = CONST.MAX_LIGHTS; i < entries.length; i++) {
+            scene.remove(entries[i].l);
+            torchLights.delete(entries[i].k);
+        }
+    }
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-    const sun = new THREE.DirectionalLight(0xffffff, 0.75);
-    sun.position.set(30, 50, 30);
-    scene.add(sun);
-    const fill = new THREE.DirectionalLight(0xffffff, 0.25);
-    fill.position.set(-30, -20, -30);
-    scene.add(fill);
-
-    // ============ 渲染 ============
+    // ==========================================================
+    // 动态渲染
+    // ==========================================================
     const renderedMeshes = new Map();
+
     function addMeshAt(x, y, z, type) {
         const k = worldKey(x, y, z);
         if (renderedMeshes.has(k)) return;
-        const mesh = new THREE.Mesh(BLOCK_GEOMETRY, BLOCK_MATERIALS[type]);
-        mesh.position.set(x + 0.5, y + 0.5, z + 0.5);
+        let mesh;
+        if (type === 'torch') {
+            mesh = new THREE.Mesh(TORCH_GEOMETRY, BLOCK_MATERIALS.torch);
+            mesh.position.set(x + 0.5, y + 0.3, z + 0.5);
+        } else {
+            mesh = new THREE.Mesh(BLOCK_GEOMETRY, BLOCK_MATERIALS[type]);
+            mesh.position.set(x + 0.5, y + 0.5, z + 0.5);
+        }
         mesh.userData = { x, y, z, type };
         mesh.matrixAutoUpdate = false;
         mesh.updateMatrix();
         scene.add(mesh);
         renderedMeshes.set(k, mesh);
+
+        if (type === 'torch') addTorchLight(x, y, z);
     }
+
     function removeMeshAt(x, y, z) {
         const k = worldKey(x, y, z);
         const mesh = renderedMeshes.get(k);
         if (mesh) { scene.remove(mesh); renderedMeshes.delete(k); }
+        removeTorchLight(x, y, z);
     }
+
+    let renderDistance = 9;
+
     function updateRender() {
         const cx = Math.floor(player.pos.x);
         const cz = Math.floor(player.pos.z);
         const cy = Math.floor(player.pos.y);
         const needed = new Set();
-        const yMin = Math.max(CONST.CAVE_DEPTH_LIMIT - 2, cy - 10);
-        const yMax = cy + 10;
-        for (let dx = -CONST.RENDER_RADIUS; dx <= CONST.RENDER_RADIUS; dx++) {
-            for (let dz = -CONST.RENDER_RADIUS; dz <= CONST.RENDER_RADIUS; dz++) {
+        const R = renderDistance;
+        const yMin = Math.max(1, cy - 20);
+        const yMax = cy + 20;
+
+        for (let dx = -R; dx <= R; dx++) {
+            for (let dz = -R; dz <= R; dz++) {
                 const x = cx + dx, z = cz + dz;
-                const h = terrainHeight(x, z);
-                for (let y = h; y >= h - 4; y--) {
+                const h = getHeight(x, z);
+                // 从最高层（树顶）向下到 yMin
+                const topY = Math.min(h + 6, yMax);
+                for (let y = topY; y >= yMin; y--) {
                     const k = worldKey(x, y, z);
-                    const type = getBlockType(x, y, z);
-                    if (type !== null) {
-                        needed.add(k);
-                        if (!renderedMeshes.has(k)) addMeshAt(x, y, z, type);
-                    }
-                }
-                const yTop = Math.min(h - 5, yMax);
-                const yBot = Math.max(CONST.CAVE_DEPTH_LIMIT - 2, yMin);
-                for (let y = yTop; y >= yBot; y--) {
-                    const k = worldKey(x, y, z);
-                    if (needed.has(k)) continue;
                     const type = getBlockType(x, y, z);
                     if (type !== null) {
                         needed.add(k);
@@ -289,30 +594,52 @@
                 }
             }
         }
+
+        // 玩家修改的方块
         for (const [k, type] of modifications) {
             if (type === null) continue;
             const [x, y, z] = k.split(',').map(Number);
-            if (Math.abs(x - cx) <= CONST.RENDER_RADIUS && Math.abs(z - cz) <= CONST.RENDER_RADIUS) {
+            if (Math.abs(x - cx) <= R && Math.abs(z - cz) <= R) {
                 needed.add(k);
                 if (!renderedMeshes.has(k)) addMeshAt(x, y, z, type);
             }
         }
+
         for (const k of [...renderedMeshes.keys()]) {
             if (!needed.has(k)) {
                 scene.remove(renderedMeshes.get(k));
                 renderedMeshes.delete(k);
+                const [x, y, z] = k.split(',').map(Number);
+                removeTorchLight(x, y, z);
             }
         }
     }
 
-    // ============ 玩家 ============
-    const spawnH = terrainHeight(0, 0);
-    const player = {
-        pos: new THREE.Vector3(0.5, spawnH + 2, 0.5),
+    // ==========================================================
+    // 玩家
+    // ==========================================================
+    function randomSpawn() {
+        // 找一个地表位置
+        for (let i = 0; i < 50; i++) {
+            const x = (Math.random() - 0.5) * 200;
+            const z = (Math.random() - 0.5) * 200;
+            const y = getHeight(Math.floor(x), Math.floor(z)) + 2;
+            if (y > 5) return new THREE.Vector3(x + 0.5, y, z + 0.5);
+        }
+        return new THREE.Vector3(0.5, 30, 0.5);
+    }
+
+    let player = {
+        pos: randomSpawn(),
         yaw: 0, pitch: -0.3, vy: 0, onGround: false,
     };
 
-    // ============ 碰撞 ============
+    let moveSpeed = 6;
+    let flyingMode = false;
+
+    // ==========================================================
+    // 碰撞
+    // ==========================================================
     function isColliding(pos) {
         const minX = pos.x - CONST.PLAYER_W / 2, maxX = pos.x + CONST.PLAYER_W / 2;
         const minY = pos.y, maxY = pos.y + CONST.PLAYER_H;
@@ -329,6 +656,7 @@
                         maxZ > z && minZ < z + 1) return true;
         return false;
     }
+
     function exactGroundY(pos) {
         const halfW = CONST.PLAYER_W / 2;
         const x0 = Math.floor(pos.x - halfW + 0.001);
@@ -338,7 +666,7 @@
         let highest = -Infinity;
         for (let x = x0; x <= x1; x++) {
             for (let z = z0; z <= z1; z++) {
-                for (let y = Math.floor(pos.y + CONST.PLAYER_H); y >= CONST.CAVE_DEPTH_LIMIT - 5; y--) {
+                for (let y = Math.floor(pos.y + CONST.PLAYER_H); y >= 0; y--) {
                     if (isSolid(x, y, z)) {
                         if (y + 1 > highest) highest = y + 1;
                         break;
@@ -348,6 +676,7 @@
         }
         return highest;
     }
+
     function sweepMove(axis, dist) {
         const n = Math.max(1, Math.ceil(Math.abs(dist) / CONST.SWEEP_STEP));
         const s = dist / n;
@@ -365,10 +694,13 @@
         return false;
     }
 
-    // ============ 射线 ============
+    // ==========================================================
+    // 射线
+    // ==========================================================
     const raycaster = new THREE.Raycaster();
     raycaster.far = 6;
     const _rayDir = new THREE.Vector3();
+
     function raycast() {
         camera.getWorldDirection(_rayDir);
         raycaster.set(camera.position, _rayDir);
@@ -378,16 +710,30 @@
         return { block: h.object.userData, normal: h.face.normal.clone() };
     }
 
-    // ============ 放置 / 破坏 ============
-    let lastAction = '';
+    // ==========================================================
+    // 放置 / 破坏
+    // ==========================================================
     function toast(msg) {
         const el = document.getElementById('toast');
         el.textContent = msg;
         el.classList.add('show');
         clearTimeout(el._t);
         el._t = setTimeout(() => el.classList.remove('show'), 800);
-        lastAction = msg;
     }
+
+    // 沙子重力
+    function applySandGravity(x, y, z) {
+        for (let cy = y + 1; cy < y + 20; cy++) {
+            if (getBlockType(x, cy, z) !== 'sand') break;
+            setBlock(x, cy, z, null);
+            removeMeshAt(x, cy, z);
+            let ly = cy;
+            while (ly > 0 && !isSolid(x, ly - 1, z)) ly--;
+            setBlock(x, ly, z, 'sand');
+            addMeshAt(x, ly, z, 'sand');
+        }
+    }
+
     function tryPlace() {
         const hit = raycast();
         if (!hit) return toast('没对准方块');
@@ -395,67 +741,86 @@
         const n = hit.normal;
         const tx = x + n.x, ty = y + n.y, tz = z + n.z;
         if (isSolid(tx, ty, tz)) return;
+
         const pMinX = player.pos.x - CONST.PLAYER_W / 2, pMaxX = player.pos.x + CONST.PLAYER_W / 2;
         const pMinY = player.pos.y, pMaxY = player.pos.y + CONST.PLAYER_H;
         const pMinZ = player.pos.z - CONST.PLAYER_W / 2, pMaxZ = player.pos.z + CONST.PLAYER_W / 2;
         if (pMaxX > tx && pMinX < tx + 1 && pMaxY > ty && pMinY < ty + 1 && pMaxZ > tz && pMinZ < tz + 1)
             return toast('会卡住自己');
+
         setBlock(tx, ty, tz, currentBlock);
         addMeshAt(tx, ty, tz, currentBlock);
+
+        if (currentBlock === 'sand') applySandGravity(tx, ty, tz);
         scheduleSave();
     }
+
     function tryBreak() {
         const hit = raycast();
         if (!hit) return toast('没对准方块');
         const { x, y, z } = hit.block;
+        if (y === 0) return toast('基岩无法破坏');
+
         const footX = Math.floor(player.pos.x), footZ = Math.floor(player.pos.z);
         const footY = Math.floor(player.pos.y - 0.05);
         if (x === footX && y === footY && z === footZ) return toast('不能挖脚下');
+
         setBlock(x, y, z, null);
         removeMeshAt(x, y, z);
+        applySandGravity(x, y, z);
         scheduleSave();
     }
 
-    // ============ 存档 ============
+    // ==========================================================
+    // 存档
+    // ==========================================================
     let saveTimer = null;
     function scheduleSave() {
         clearTimeout(saveTimer);
         saveTimer = setTimeout(saveToLocal, 500);
     }
+
     function getSaveData() {
         return {
-            version: 6,
+            version: 7,
+            seed: WORLD_SEED,
+            worldType,
             modifications: [...modifications],
             player: {
                 x: player.pos.x, y: player.pos.y, z: player.pos.z,
                 yaw: player.yaw, pitch: player.pitch,
             },
             currentBlock,
+            settings: { renderDistance, brightnessLevel, moveSpeed, flyingMode },
         };
     }
+
     function saveToLocal() {
         try { localStorage.setItem(CONST.SAVE_KEY, JSON.stringify(getSaveData())); }
-        catch (e) { console.warn('自动存档失败', e); }
+        catch (e) { console.warn('存档失败', e); }
     }
+
     function applySaveData(data) {
         if (!data || typeof data !== 'object') return false;
+        if (Number.isFinite(data.seed)) WORLD_SEED = data.seed;
+        if (data.worldType === 'flat' || data.worldType === 'normal') worldType = data.worldType;
+
         modifications.clear();
         if (Array.isArray(data.modifications)) {
-            for (const entry of data.modifications) {
-                if (Array.isArray(entry) && entry.length === 2) {
-                    const [k, v] = entry;
-                    if (typeof k === 'string' && (v === null || BLOCK_CONFIG[v])) {
-                        modifications.set(k, v);
-                    }
+            for (const e of data.modifications) {
+                if (Array.isArray(e) && e.length === 2) {
+                    const [k, v] = e;
+                    if (typeof k === 'string' && (v === null || BLOCK_CONFIG[v])) modifications.set(k, v);
                 }
             }
         }
+
         if (data.player) {
             const px = Number(data.player.x), py = Number(data.player.y), pz = Number(data.player.z);
             const pyaw = Number(data.player.yaw), ppitch = Number(data.player.pitch);
             player.pos.set(
                 Number.isFinite(px) ? px : 0.5,
-                Number.isFinite(py) ? py : spawnH + 2,
+                Number.isFinite(py) ? py : 30,
                 Number.isFinite(pz) ? pz : 0.5
             );
             player.yaw = Number.isFinite(pyaw) ? pyaw : 0;
@@ -463,17 +828,45 @@
                 ? Math.max(-CONST.PITCH_LIMIT, Math.min(CONST.PITCH_LIMIT, ppitch))
                 : -0.3;
         }
+
         if (data.currentBlock && BLOCK_CONFIG[data.currentBlock]) {
             currentBlock = data.currentBlock;
             updateHotbarSelection();
         }
+
+        if (data.settings) {
+            if (Number.isFinite(data.settings.renderDistance)) {
+                renderDistance = Math.max(4, Math.min(16, data.settings.renderDistance));
+                document.getElementById('renderDistSlider').value = renderDistance;
+                document.getElementById('renderDistVal').textContent = renderDistance;
+            }
+            if (Number.isFinite(data.settings.brightnessLevel)) {
+                brightnessLevel = Math.max(30, Math.min(150, data.settings.brightnessLevel));
+                document.getElementById('brightnessSlider').value = brightnessLevel;
+                document.getElementById('brightnessVal').textContent = brightnessLevel;
+                updateBrightness();
+            }
+            if (Number.isFinite(data.settings.moveSpeed)) {
+                moveSpeed = Math.max(3, Math.min(15, data.settings.moveSpeed));
+                document.getElementById('speedSlider').value = moveSpeed;
+                document.getElementById('speedVal').textContent = moveSpeed;
+            }
+            if (typeof data.settings.flyingMode === 'boolean') {
+                flyingMode = data.settings.flyingMode;
+                document.getElementById('flyToggle').checked = flyingMode;
+            }
+        }
+
         for (const mesh of renderedMeshes.values()) scene.remove(mesh);
+        for (const light of torchLights.values()) scene.remove(light);
         renderedMeshes.clear();
+        torchLights.clear();
         player.vy = 0;
         player.onGround = false;
         updateRender();
         return true;
     }
+
     function loadFromLocal() {
         try {
             const raw = localStorage.getItem(CONST.SAVE_KEY);
@@ -481,6 +874,7 @@
             return applySaveData(JSON.parse(raw));
         } catch (e) { return false; }
     }
+
     function exportSave() {
         saveToLocal();
         const data = getSaveData();
@@ -495,11 +889,11 @@
         a.click();
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(url), 1000);
-        toast('存档已导出');
+        toast('已导出存档');
     }
-    function importSave() {
-        document.getElementById('fileInput').click();
-    }
+
+    function importSave() { document.getElementById('fileInput').click(); }
+
     document.getElementById('fileInput').addEventListener('change', e => {
         const file = e.target.files && e.target.files[0];
         if (!file) return;
@@ -509,28 +903,36 @@
                 const data = JSON.parse(ev.target.result);
                 if (applySaveData(data)) {
                     saveToLocal();
-                    toast('存档已导入');
+                    toast('已导入存档');
                 } else toast('存档格式错误');
             } catch (err) { toast('读取失败'); }
         };
         reader.readAsText(file);
         e.target.value = '';
     });
-    function resetWorld() {
-        if (!confirm('确定清空存档并重新生成世界吗？')) return;
+
+    function resetWorld(newType) {
+        if (!confirm('确定生成新世界吗？当前存档会丢失。')) return;
         localStorage.removeItem(CONST.SAVE_KEY);
+        WORLD_SEED = Math.floor(Math.random() * 1e9);
+        if (newType) worldType = newType;
         modifications.clear();
         for (const mesh of renderedMeshes.values()) scene.remove(mesh);
+        for (const light of torchLights.values()) scene.remove(light);
         renderedMeshes.clear();
-        const sh = terrainHeight(0, 0);
-        player.pos.set(0.5, sh + 2, 0.5);
-        player.vy = 0; player.onGround = false;
-        player.yaw = 0; player.pitch = -0.3;
+        torchLights.clear();
+        player = {
+            pos: randomSpawn(),
+            yaw: Math.random() * Math.PI * 2,
+            pitch: -0.3, vy: 0, onGround: false,
+        };
         updateRender();
         toast('新世界已生成');
     }
 
-    // ============ 输入 ============
+    // ==========================================================
+    // 输入
+    // ==========================================================
     let moveInput = { x: 0, y: 0 };
     let jumpRequested = false;
     let currentBlock = 'grass';
@@ -541,11 +943,7 @@
         const slot = document.createElement('div');
         slot.className = 'hotbar-slot' + (k === currentBlock ? ' selected' : '');
         slot.dataset.type = k;
-        slot.style.background = BLOCK_CONFIG[k].color;
-        const label = document.createElement('div');
-        label.className = 'label';
-        label.textContent = BLOCK_CONFIG[k].name[0];
-        slot.appendChild(label);
+        slot.style.background = BLOCK_CONFIG[k].color || BLOCK_CONFIG[k].top;
         hotbar.appendChild(slot);
         hotbarSlots.push(slot);
     }
@@ -584,10 +982,20 @@
     };
     const pointInRect = (x, y, r) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
 
+    function isInModal(x, y) {
+        const sp = document.getElementById('settingsPanel');
+        const ip = document.getElementById('inventoryPanel');
+        if (sp.classList.contains('show') && pointInRect(x, y, sp.getBoundingClientRect())) return true;
+        if (ip.classList.contains('show') && pointInRect(x, y, ip.getBoundingClientRect())) return true;
+        return false;
+    }
+
     function getUIElements() {
         return {
             jump: document.getElementById('jumpBtn').getBoundingClientRect(),
             joystick: joystick.getBoundingClientRect(),
+            settings: document.getElementById('settingsBtn').getBoundingClientRect(),
+            inventory: document.getElementById('inventoryBtn').getBoundingClientRect(),
             save: document.getElementById('saveBtn').getBoundingClientRect(),
             load: document.getElementById('loadBtn').getBoundingClientRect(),
             reset: document.getElementById('resetBtn').getBoundingClientRect(),
@@ -603,22 +1011,31 @@
         const ui = getUIElements();
         for (const t of e.changedTouches) {
             const x = t.clientX, y = t.clientY;
-            if (pointInRect(x, y, ui.save))  { exportSave(); activeTouches.set(t.identifier, { type: 'ui' }); continue; }
-            if (pointInRect(x, y, ui.load))  { importSave(); activeTouches.set(t.identifier, { type: 'ui' }); continue; }
-            if (pointInRect(x, y, ui.reset)) { resetWorld(); activeTouches.set(t.identifier, { type: 'ui' }); continue; }
+
+            // 弹窗阻止游戏输入
+            if (isInModal(x, y)) continue;
+
+            if (pointInRect(x, y, ui.settings))  { openSettings(); activeTouches.set(t.identifier, { type: 'ui' }); continue; }
+            if (pointInRect(x, y, ui.inventory)) { openInventory(); activeTouches.set(t.identifier, { type: 'ui' }); continue; }
+            if (pointInRect(x, y, ui.save))      { exportSave(); activeTouches.set(t.identifier, { type: 'ui' }); continue; }
+            if (pointInRect(x, y, ui.load))      { importSave(); activeTouches.set(t.identifier, { type: 'ui' }); continue; }
+            if (pointInRect(x, y, ui.reset))     { resetWorld(); activeTouches.set(t.identifier, { type: 'ui' }); continue; }
+
             if (pointInCircle(x, y, ui.jump)) {
                 jumpRequested = true;
                 activeTouches.set(t.identifier, { type: 'jump' });
                 continue;
             }
+
             let slotHit = null;
-            for (const s of ui.slots) if (pointInRect(x, y, s.rect)) { slotHit = s; break; }
+            for (const s of ui.slots) if (pointInCircle(x, y, s.rect)) { slotHit = s; break; }
             if (slotHit) {
                 currentBlock = slotHit.type;
                 updateHotbarSelection();
                 activeTouches.set(t.identifier, { type: 'ui' });
                 continue;
             }
+
             if (pointInCircle(x, y, ui.joystick)) {
                 const r = joystick.getBoundingClientRect();
                 joyCenter = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
@@ -626,6 +1043,7 @@
                 activeTouches.set(t.identifier, { type: 'joystick' });
                 continue;
             }
+
             const state = {
                 type: 'empty', startX: x, startY: y, lastX: x, lastY: y,
                 moved: false, longPressFired: false, longPressTimer: null,
@@ -658,7 +1076,6 @@
                 }
                 if (info.moved) {
                     player.yaw -= dx * 0.005;
-                    // 立即归一化 yaw，避免数值无限增长
                     if (player.yaw > Math.PI) player.yaw -= 2 * Math.PI;
                     else if (player.yaw < -Math.PI) player.yaw += 2 * Math.PI;
                     player.pitch = Math.max(-CONST.PITCH_LIMIT, Math.min(CONST.PITCH_LIMIT, player.pitch - dy * 0.005));
@@ -692,7 +1109,9 @@
         }
     });
 
-    // ============ 物理 ============
+    // ==========================================================
+    // 物理
+    // ==========================================================
     function physicsStep(dt) {
         const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
         const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
@@ -700,8 +1119,17 @@
         move.addScaledVector(forward, -moveInput.y);
         move.addScaledVector(right, moveInput.x);
         if (move.length() > 1) move.normalize();
-        sweepMove('x', move.x * CONST.MOVE_SPEED * dt);
-        sweepMove('z', move.z * CONST.MOVE_SPEED * dt);
+
+        sweepMove('x', move.x * moveSpeed * dt);
+        sweepMove('z', move.z * moveSpeed * dt);
+
+        if (flyingMode) {
+            // 飞行模式：不受重力，按跳上升
+            if (jumpRequested) player.pos.y += moveSpeed * dt;
+            else player.pos.y -= moveSpeed * 0.5 * dt;  // 缓慢下沉
+            jumpRequested = false;
+            return;
+        }
 
         if (jumpRequested && player.onGround) {
             player.vy = CONST.JUMP_SPEED;
@@ -732,9 +1160,7 @@
     }
 
     // ==========================================================
-    // ★★★ 相机：用显式四元数构造，数学上严格无 roll ★★★
-    // 顺序：先绕本地 X 轴 pitch，再绕世界 Y 轴 yaw
-    // 等价于欧拉角 YXZ，但不依赖 THREE.Euler 的内部实现
+    // 相机：显式四元数，无 roll
     // ==========================================================
     const _yAxis = new THREE.Vector3(0, 1, 0);
     const _xAxis = new THREE.Vector3(1, 0, 0);
@@ -743,15 +1169,10 @@
 
     function updateCamera() {
         camera.position.set(player.pos.x, player.pos.y + CONST.EYE_H, player.pos.z);
-
         _yawQuat.setFromAxisAngle(_yAxis, player.yaw);
         _pitchQuat.setFromAxisAngle(_xAxis, player.pitch);
-
-        // 先 pitch 后 yaw：结果 = yawQuat * pitchQuat
         camera.quaternion.copy(_yawQuat).multiply(_pitchQuat);
 
-        // 强制滚转为零（保险措施）
-        // 理论上不会发生，但万一数值误差累积，这一步可以彻底消除
         const e = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
         if (Math.abs(e.z) > 1e-6) {
             e.z = 0;
@@ -759,7 +1180,92 @@
         }
     }
 
-    // ============ 主循环 ============
+    // ==========================================================
+    // 亮度
+    // ==========================================================
+    function updateBrightness() {
+        const v = brightnessLevel / 100;
+        ambientLight.intensity = 0.3 + v * 0.6;
+        sunLight.intensity = 0.3 + v * 0.6;
+        fillLight.intensity = v * 0.3;
+    }
+
+    // ==========================================================
+    // UI 事件
+    // ==========================================================
+    function openSettings() {
+        document.getElementById('settingsPanel').classList.add('show');
+    }
+    function closeSettings() {
+        document.getElementById('settingsPanel').classList.remove('show');
+    }
+    document.getElementById('closeSettings').addEventListener('click', closeSettings);
+    document.getElementById('settingsBtn').addEventListener('click', openSettings);
+
+    document.getElementById('renderDistSlider').addEventListener('input', e => {
+        renderDistance = Number(e.target.value);
+        document.getElementById('renderDistVal').textContent = renderDistance;
+        updateRender();
+    });
+    document.getElementById('brightnessSlider').addEventListener('input', e => {
+        brightnessLevel = Number(e.target.value);
+        document.getElementById('brightnessVal').textContent = brightnessLevel;
+        updateBrightness();
+    });
+    document.getElementById('speedSlider').addEventListener('input', e => {
+        moveSpeed = Number(e.target.value);
+        document.getElementById('speedVal').textContent = moveSpeed;
+    });
+    document.getElementById('flyToggle').addEventListener('change', e => {
+        flyingMode = e.target.checked;
+    });
+    document.getElementById('applyWorldBtn').addEventListener('click', () => {
+        const t = document.getElementById('worldTypeSelect').value;
+        worldType = t;
+        closeSettings();
+        resetWorld(t);
+    });
+
+    // 背包
+    function openInventory() {
+        const grid = document.getElementById('inventoryGrid');
+        grid.innerHTML = '';
+        for (const k in BLOCK_CONFIG) {
+            const slot = document.createElement('div');
+            slot.className = 'inv-slot' + (k === currentBlock ? ' selected' : '');
+            slot.dataset.type = k;
+            slot.style.background = BLOCK_CONFIG[k].color || BLOCK_CONFIG[k].top;
+            slot.textContent = BLOCK_CONFIG[k].name;
+            slot.addEventListener('click', () => {
+                currentBlock = k;
+                updateHotbarSelection();
+                openInventory();
+            });
+            grid.appendChild(slot);
+        }
+        document.getElementById('inventoryPanel').classList.add('show');
+    }
+    function closeInventory() {
+        document.getElementById('inventoryPanel').classList.remove('show');
+    }
+    document.getElementById('closeInventory').addEventListener('click', closeInventory);
+    document.getElementById('inventoryBtn').addEventListener('click', openInventory);
+
+    // ==========================================================
+    // 主循环
+    // ==========================================================
+    function resizeRenderer() {
+        const w = document.documentElement.clientWidth || window.innerWidth;
+        const h = document.documentElement.clientHeight || window.innerHeight;
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setSize(w, h, false);
+        canvasElement.style.width = w + 'px';
+        canvasElement.style.height = h + 'px';
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+    }
+    resizeRenderer();
+
     let lastTime = performance.now();
     let accumulator = 0;
     let fpsTimer = 0, fpsCount = 0, renderTimer = 0, hudTimer = 0, resizeTimer = 0;
@@ -785,14 +1291,16 @@
             steps++;
         }
 
-        if (player.pos.y < -40) {
-            const sh = terrainHeight(0, 0);
-            player.pos.set(0.5, sh + 2, 0.5);
+        if (player.pos.y < -30) {
+            player.pos = randomSpawn();
             player.vy = 0; player.onGround = false;
         }
 
         renderTimer += frameTime;
         if (renderTimer > 0.15) { renderTimer = 0; updateRender(); }
+
+        // 太阳位置跟随玩家
+        sunLight.position.set(player.pos.x + 30, player.pos.y + 50, player.pos.z + 30);
 
         updateCamera();
         renderer.render(scene, camera);
@@ -802,8 +1310,8 @@
             hud.innerHTML =
                 `FPS: ${Math.round(fpsCount / fpsTimer)}<br>` +
                 `位置: ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}<br>` +
-                `yaw=${player.yaw.toFixed(2)} pitch=${player.pitch.toFixed(2)}<br>` +
-                `方块: ${renderedMeshes.size}`;
+                `生物群系: ${getBiome(Math.floor(player.pos.x), Math.floor(player.pos.z))}<br>` +
+                `方块: ${renderedMeshes.size} | 种子: ${WORLD_SEED}`;
             fpsCount = 0; fpsTimer = 0; hudTimer = 0;
         }
 
@@ -814,9 +1322,15 @@
     window.addEventListener('orientationchange', () => setTimeout(resizeRenderer, 200));
     window.addEventListener('beforeunload', saveToLocal);
 
+    // 启动
     if (loadFromLocal()) {
-        setTimeout(() => toast('已读取本地存档'), 500);
+        setTimeout(() => toast('已读取存档'), 500);
+    } else {
+        // 首次进入：随机世界 + 随机重生点
+        WORLD_SEED = Math.floor(Math.random() * 1e9);
+        player.pos = randomSpawn();
     }
+    updateBrightness();
     updateRender();
     update();
     </script>
