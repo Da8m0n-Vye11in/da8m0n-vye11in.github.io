@@ -54,12 +54,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 .craft-row .craft-info{flex:1;font-size:12px}
 .craft-row .craft-btn{padding:8px 14px;background:rgba(80,150,80,.9);color:#fff;border:2px solid rgba(255,255,255,.3);border-radius:4px;font-size:13px;cursor:pointer}
 .craft-row .craft-btn:disabled{background:rgba(80,80,80,.5);cursor:not-allowed}
-#miniMenu{position:fixed;bottom:82px;left:50%;transform:translateX(-120px);background:rgba(30,30,40,.97);border:3px solid rgba(255,255,255,.5);border-radius:8px;padding:8px;z-index:200;display:none;flex-direction:column;gap:6px}
-#miniMenu.show{display:flex}
-#miniMenu .mini-btn{padding:10px 20px;background:rgba(80,120,180,.9);color:#fff;border:2px solid rgba(255,255,255,.3);border-radius:4px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
+#miniMenu{position:fixed;bottom:82px;left:50%;transform:translateX(-120px);background:rgba(30,30,40,.97);border:3px solid rgba(255,255,255,.5);border-radius:8px;padding:8px;z-index:200;display:none;flex-direction:column;>
+gap:6px}
+#miniMenu.show{display<div:flex}
+#miniMenu .mini-btn class{padding:10px 20px=";background:rgba(80,120,180panel,.9);color:#fff;border:2"px solid rgba(255,255,255 id,.3);border-radius:4px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
 #miniMenu .mini-btn:active{background:rgba(100,140,200,.9)}
 #fileInput{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0}
-/* 沙尘暴全屏覆盖 */
 #sandstormOverlay{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5;opacity:0;transition:opacity .8s;background:linear-gradient(0deg,rgba(220,180,90,.5),rgba(200,160,80,.4))}
 </style>
 </head>
@@ -86,8 +86,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 <div id="jumpBtn">跳</div>
 <div id="downBtn">▼</div>
 <div id="longpressHint"></div>
-<div id="toast"></div>
-<div class="panel" id="settingsPanel">
+<div id="toast"></div="settingsPanel">
 <h3>⚙️ 设置</h3>
 <div class="setting-row"><label>世界类型</label>
 <select id="worldTypeSelect">
@@ -102,6 +101,14 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 <option value="cycle">循环</option>
 <option value="day">白天</option>
 <option value="night">夜晚</option>
+</select></div>
+<div class="setting-row"><label>强制天气</label>
+<select id="weatherSelect">
+<option value="auto">自动</option>
+<option value="clear">晴天</option>
+<option value="rain">下雨</option>
+<option value="snow">下雪</option>
+<option value="sandstorm">沙尘暴</option>
 </select></div>
 <div class="setting-row"><label>渲染距离</label>
 <input type="range" id="renderDistSlider" min="4" max="14" value="7">
@@ -149,11 +156,12 @@ const RECIPES=[{id:'plank',inputs:{wood:1},outputs:{plank:4},name:'原木 → �
 const CONST={
 GRAVITY:22,JUMP_SPEED:8.5,
 PLAYER_W:.6,PLAYER_H:1.8,EYE_H:1.6,
-SAVE_KEY:'minicraft_single_v2',
+SAVE_KEY:'minicraft_v3',
 FIXED_DT:1/60,
 LONG_PRESS_MS:450,MOVE_THRESHOLD:25,SWEEP_STEP:.05,
 PITCH_LIMIT:1.45,MAX_TORCH_LIGHTS:3,
-DAY_DURATION:2400,WEATHER_MIN:300,WEATHER_MAX:600
+DAY_DURATION:2400,WEATHER_MIN:300,WEATHER_MAX:600,
+MAX_Y:128
 };
 // ==================== 状态 ====================
 let WORLD_SEED=Math.floor(Math.random()*1e9);
@@ -164,6 +172,7 @@ let moveSpeed=6;
 let flyingMode=false;
 let spectatorMode=false;
 let dayNightMode='cycle';
+let forcedWeather='auto';
 let worldTime=CONST.DAY_DURATION*0.35;
 let currentBlock='grass';
 let moveInput={x:0,y:0};
@@ -197,19 +206,29 @@ else if(b==='plains')h=20+noise2(x*.15,z*.15,WORLD_SEED+3)*3;
 else h=22+noise2(x*.2,z*.2,WORLD_SEED+4)*5+noise2(x*.05,z*.05,WORLD_SEED+5)*4;
 return Math.floor(h);
 }
-// ★ 修复：简化的洞穴生成，使用更清晰的阈值
 function isCave(x,y,z){
 if(y<2)return false;
 const surface=getHeight(x,z);
 if(y>surface-2)return false;
-// 洞穴：3D 噪声
 const n=noise3(x*.06,y*.06,z*.06,WORLD_SEED+100);
 if(n>.62)return true;
-// 隧道：两个噪声的等值面相交
 const n1=noise3(x*.05,y*.05,z*.05,WORLD_SEED+200);
 const n2=noise3(x*.05,y*.05,z*.05,WORLD_SEED+300);
 if(Math.abs(n1-.5)<.05&&Math.abs(n2-.5)<.05)return true;
 return false;
+}
+// ★ 洞穴列缓存：如果一列的任意深度有洞穴，就返回 true
+const caveColumnCache=new Map();
+function hasCaveInColumn(x,z){
+const k=`${x},${z}`;
+if(caveColumnCache.has(k))return caveColumnCache.get(k);
+const surface=getHeight(x,z);
+let result=false;
+for(let y=2;y<surface-1;y++){
+if(isCave(x,y,z)){result=true;break}
+}
+caveColumnCache.set(k,result);
+return result;
 }
 function hasTree(x,z){if(getBiome(x,z)!=='forest')return false;return hash2(x,z,WORLD_SEED+400)<.10}
 function treeBlockAt(x,y,z){
@@ -230,9 +249,13 @@ return null;
 function generateBlock(x,y,z){
 if(y<0)return null;
 if(y===0)return'bedrock';
+// ★ 洞穴标柱：如果这一列有洞穴，就在 y=1 到 MAX_Y 生成泥土柱（覆盖普通地形）
+if(y>=1&&y<=CONST.MAX_Y&&hasCaveInColumn(x,z)){
+return'dirt';
+}
 const surface=getHeight(x,z);
 const biome=getBiome(x,z);
-if(y<surface-1&&isCave(x,y,z)){const t=treeBlockAt(x,y,z);return t||null}
+if(y<surface-1&&isCave(x,y,z))return null;
 const t=treeBlockAt(x,y,z);
 if(t&&y>surface)return t;
 if(y===surface)return biome==='desert'?'sand':'grass';
@@ -247,6 +270,13 @@ const worldKey=(x,y,z)=>`${x},${y},${z}`;
 function getBlockType(x,y,z){const k=worldKey(x,y,z);if(modifications.has(k))return modifications.get(k);if(y===0)return'bedrock';return generateBlock(x,y,z)}
 function isSolid(x,y,z){return getBlockType(x,y,z)!==null}
 function setBlock(x,y,z,type){modifications.set(worldKey(x,y,z),type)}
+// ★ 天空暴露检测（用于选择亮/暗材质）
+function hasSkyAccess(x,y,z){
+for(let cy=y+1;cy<y+22;cy++){
+if(isSolid(x,cy,z))return false;
+}
+return true;
+}
 // ==================== 场景 ====================
 const scene=new THREE.Scene();
 const SKY_DAY=new THREE.Color(0x87CEEB),SKY_NIGHT=new THREE.Color(0x101830);
@@ -276,18 +306,17 @@ tex.magFilter=THREE.NearestFilter;
 tex.minFilter=THREE.NearestFilter;
 return tex;
 }
+// 创建亮/暗两套材质
+function makeDimMaterial(src){
+const dim=src.clone();
+dim.color=new THREE.Color(0.35,0.35,0.35); // 乘性变暗
+return dim;
+}
 const BLOCK_GEOMETRY=new THREE.BoxGeometry(1,1,1);
 const BLOCK_MATERIALS={};
-// ★ 旁观模式：纯线框材质
-const SPECTATOR_MATERIAL=new THREE.MeshBasicMaterial({
-color:0x66ddff,
-wireframe:true,
-transparent:true,
-opacity:0.35,
-depthWrite:false,
-});
+const BLOCK_MATERIALS_DIM={};
+const SPECTATOR_MATERIAL=new THREE.MeshBasicMaterial({color:0x66ddff,wireframe:true,transparent:true,opacity:0.35,depthWrite:false});
 const SPECTATOR_MATERIAL_ARRAY=Array(6).fill(SPECTATOR_MATERIAL);
-
 (function buildMaterials(){
 const gt=makeTexture(BLOCK_CONFIG.grass.top);
 const gb=makeTexture(BLOCK_CONFIG.grass.bottom);
@@ -297,12 +326,19 @@ new THREE.MeshLambertMaterial({map:gs}),new THREE.MeshLambertMaterial({map:gs}),
 new THREE.MeshLambertMaterial({map:gt}),new THREE.MeshLambertMaterial({map:gb}),
 new THREE.MeshLambertMaterial({map:gs}),new THREE.MeshLambertMaterial({map:gs})
 ];
+BLOCK_MATERIALS_DIM.grass=BLOCK_MATERIALS.grass.map(makeDimMaterial);
 for(const k in BLOCK_CONFIG){
 if(k==='grass')continue;
 const cfg=BLOCK_CONFIG[k];
 const mat=new THREE.MeshLambertMaterial({map:makeTexture(cfg.color)});
 if(cfg.emissive){mat.emissive=new THREE.Color(cfg.color);mat.emissiveIntensity=.6}
 BLOCK_MATERIALS[k]=mat;
+// 火把不需要暗色版本（本身发光）
+if(k==='torch'){
+BLOCK_MATERIALS_DIM[k]=mat;
+}else{
+BLOCK_MATERIALS_DIM[k]=makeDimMaterial(mat);
+}
 }
 })();
 function setSpectatorVisual(on){
@@ -312,7 +348,11 @@ mesh.material=SPECTATOR_MATERIAL_ARRAY;
 mesh.castShadow=false;
 mesh.receiveShadow=false;
 }else{
-mesh.material=BLOCK_MATERIALS[mesh.userData.type];
+// 根据光照重新选择材质
+const type=mesh.userData.type;
+const {x,y,z}=mesh.userData;
+const useDim=type!=='torch'&&!hasSkyAccess(x,y,z);
+mesh.material=useDim?BLOCK_MATERIALS_DIM[type]:BLOCK_MATERIALS[type];
 mesh.castShadow=true;
 mesh.receiveShadow=true;
 }
@@ -320,7 +360,7 @@ mesh.receiveShadow=true;
 }
 const TORCH_GEOMETRY=new THREE.BoxGeometry(.25,.6,.25);
 // ==================== 光照 ====================
-const ambientLight=new THREE.AmbientLight(0xffffff,.5);scene.add(ambientLight);
+const ambientLight=new THREE.AmbientLight(0xffffff,.35);scene.add(ambientLight);
 const sunLight=new THREE.DirectionalLight(0xffffff,.7);
 sunLight.position.set(30,50,30);
 sunLight.castShadow=true;
@@ -331,15 +371,15 @@ sunLight.shadow.camera.left=-20;sunLight.shadow.camera.right=20;
 sunLight.shadow.camera.top=20;sunLight.shadow.camera.bottom=-20;
 sunLight.shadow.bias=-.001;
 scene.add(sunLight);scene.add(sunLight.target);
-const fillLight=new THREE.DirectionalLight(0xffffff,.15);
+const fillLight=new THREE.DirectionalLight(0xffffff,.1);
 fillLight.position.set(-30,-20,-30);scene.add(fillLight);
 const sunSphere=new THREE.Mesh(new THREE.SphereGeometry(4,12,12),new THREE.MeshBasicMaterial({color:0xffdd44,fog:false}));
 scene.add(sunSphere);
 const moonSphere=new THREE.Mesh(new THREE.SphereGeometry(3,12,12),new THREE.MeshBasicMaterial({color:0xeeeeff,fog:false}));
 scene.add(moonSphere);
-// ==================== 火把光 ====================
+// ==================== 火把光（★ 缩短半径，让遮挡更明显） ====================
 const torchLights=new Map();
-function addTorchLight(x,y,z){const k=worldKey(x,y,z);if(torchLights.has(k))return;const light=new THREE.PointLight(0xffcc55,.9,8);light.position.set(x+.5,y+.3,z+.5);scene.add(light);torchLights.set(k,light);pruneTorchLights()}
+function addTorchLight(x,y,z){const k=worldKey(x,y,z);if(torchLights.has(k))return;const light=new THREE.PointLight(0xffcc55,1.0,5);light.position.set(x+.5,y+.3,z+.5);scene.add(light);torchLights.set(k,light);pruneTorchLights()}
 function removeTorchLight(x,y,z){const k=worldKey(x,y,z);const l=torchLights.get(k);if(l){scene.remove(l);torchLights.delete(k)}}
 function pruneTorchLights(){if(torchLights.size<=CONST.MAX_TORCH_LIGHTS)return;const arr=[...torchLights.entries()].map(([k,l])=>{const[x,y,z]=k.split(',').map(Number);const d=Math.hypot(x-player.pos.x,y-player.pos.y,z-player.pos.z);return{k,l,d}}).sort((a,b)=>a.d-b.d);for(let i=CONST.MAX_TORCH_LIGHTS;i<arr.length;i++){scene.remove(arr[i].l);torchLights.delete(arr[i].k)}}
 // ==================== 网格管理 ====================
@@ -354,7 +394,8 @@ mesh.position.set(x+.5,y+(type==='torch'?.3:.5),z+.5);
 mesh.castShadow=false;
 mesh.receiveShadow=false;
 }else{
-const mat=BLOCK_MATERIALS[type];
+const useDim=type!=='torch'&&!hasSkyAccess(x,y,z);
+const mat=useDim?BLOCK_MATERIALS_DIM[type]:BLOCK_MATERIALS[type];
 mesh=type==='torch'?new THREE.Mesh(TORCH_GEOMETRY,mat):new THREE.Mesh(BLOCK_GEOMETRY,mat);
 mesh.position.set(x+.5,y+(type==='torch'?.3:.5),z+.5);
 mesh.castShadow=true;
@@ -368,6 +409,25 @@ renderedMeshes.set(k,mesh);
 if(type==='torch')addTorchLight(x,y,z);
 }
 function removeMeshAt(x,y,z){const k=worldKey(x,y,z);const m=renderedMeshes.get(k);if(m){scene.remove(m);renderedMeshes.delete(k)}removeTorchLight(x,y,z)}
+// ★ 更新一个方块的光照状态
+function refreshLightingAround(x,y,z){
+// 更新周围 22 格内的方块材质（因为 hasSkyAccess 可能变化）
+const R=22;
+for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){
+for(let dy=-R;dy<=R;dy++){
+const cx=x+dx,cy=y+dy,cz=z+dz;
+if(cy<1)continue;
+const k=worldKey(cx,cy,cz);
+const mesh=renderedMeshes.get(k);
+if(!mesh)continue;
+const type=mesh.userData.type;
+if(type==='torch')continue;
+const useDim=!hasSkyAccess(cx,cy,cz);
+const newMat=useDim?BLOCK_MATERIALS_DIM[type]:BLOCK_MATERIALS[type];
+if(mesh.material!==newMat)mesh.material=newMat;
+}
+}
+}
 function updateRender(){
 const cx=Math.floor(player.pos.x),cz=Math.floor(player.pos.z);
 const needed=new Set();
@@ -457,18 +517,13 @@ if(d.age>60){scene.remove(d.mesh);drops.splice(i,1)}
 }
 }
 function clearAllDrops(){for(const d of drops)scene.remove(d.mesh);drops.length=0}
-// ==================== 天气系统（★ 重写） ====================
+// ==================== 天气系统 ====================
 let weather={type:'clear',remaining:90,intensity:0};
-// 雨：LineSegments
 let rainLines=null;
-// 雪：Points
 let snowPoints=null;
-// 沙尘暴：CSS 覆盖 + 飘动粒子
 let sandPoints=null;
 const sandOverlay=document.getElementById('sandstormOverlay');
-
 function initWeatherSystem(){
-// 雨
 const rainCount=800;
 const rainPos=new Float32Array(rainCount*6);
 const rainGeo=new THREE.BufferGeometry();
@@ -479,8 +534,6 @@ rainLines.frustumCulled=false;
 rainLines.visible=false;
 scene.add(rainLines);
 rainLines.userData={count:rainCount,positions:rainPos};
-
-// 雪
 const snowCount=800;
 const snowPos=new Float32Array(snowCount*3);
 const snowGeo=new THREE.BufferGeometry();
@@ -491,8 +544,6 @@ snowPoints.frustumCulled=false;
 snowPoints.visible=false;
 scene.add(snowPoints);
 snowPoints.userData={count:snowCount,positions:snowPos};
-
-// 沙尘暴粒子
 const sandCount=400;
 const sandPos=new Float32Array(sandCount*3);
 const sandGeo=new THREE.BufferGeometry();
@@ -513,13 +564,17 @@ else weather.type='sandstorm';
 weather.remaining=CONST.WEATHER_MIN+Math.random()*(CONST.WEATHER_MAX-CONST.WEATHER_MIN);
 }
 function updateWeather(dt){
+// ★ 强制天气：绕过时间规则
+if(forcedWeather!=='auto'){
+weather.type=forcedWeather;
+weather.remaining=Infinity;
+}else{
 weather.remaining-=dt;
 if(weather.remaining<=0)pickNextWeather();
+}
 const target=weather.type==='clear'?0:1;
 weather.intensity+=(target-weather.intensity)*dt*.4;
 const px=player.pos.x,py=player.pos.y,pz=player.pos.z;
-
-// 雨
 if(weather.type==='rain'&&weather.intensity>.05){
 rainLines.visible=true;
 rainLines.material.opacity=weather.intensity*.7;
@@ -540,8 +595,6 @@ arr[o+3]=x;arr[o+4]=y-0.7;arr[o+5]=z;
 }
 rainLines.geometry.attributes.position.needsUpdate=true;
 }else{rainLines.visible=false}
-
-// 雪
 if(weather.type==='snow'&&weather.intensity>.05){
 snowPoints.visible=true;
 snowPoints.material.opacity=weather.intensity*.9;
@@ -562,8 +615,6 @@ arr[i*3]=x;arr[i*3+1]=y;arr[i*3+2]=z;
 }
 snowPoints.geometry.attributes.position.needsUpdate=true;
 }else{snowPoints.visible=false}
-
-// 沙尘暴：CSS 覆盖 + 飘动粒子
 if(weather.type==='sandstorm'&&weather.intensity>.05){
 sandOverlay.style.opacity=weather.intensity*.75;
 sandPoints.visible=true;
@@ -742,6 +793,8 @@ const pMinZ=player.pos.z-CONST.PLAYER_W/2,pMaxZ=player.pos.z+CONST.PLAYER_W/2;
 if(pMaxX>tx&&pMinX<tx+1&&pMaxY>ty&&pMinY<ty+1&&pMaxZ>tz&&pMinZ<tz+1)return;
 setBlock(tx,ty,tz,currentBlock);
 addMeshAt(tx,ty,tz,currentBlock);
+// ★ 更新周围光照
+refreshLightingAround(tx,ty,tz);
 inventory[currentBlock]--;
 updateHotbarCounts();
 if(currentBlock==='sand')applyGravityToColumn(tx,tz,ty);
@@ -759,11 +812,13 @@ if(x===fx&&y===fy&&z===fz)return toast('不能挖脚下');
 const type=getBlockType(x,y,z);
 setBlock(x,y,z,null);
 removeMeshAt(x,y,z);
+// ★ 更新周围光照
+refreshLightingAround(x,y,z);
 if(type)spawnDrop(x+.5,y+.5,z+.5,type);
 applyGravityToColumn(x,z,y+1);
 scheduleSave();
 }
-// ==================== 出生点（★ 修复：3x3 范围全清空） ====================
+// ==================== 出生点 ====================
 function randomSpawn(){
 for(let i=0;i<500;i++){
 const x=(Math.random()-.5)*400;
@@ -771,21 +826,11 @@ const z=(Math.random()-.5)*400;
 const fx=Math.floor(x),fz=Math.floor(z);
 const surface=getHeight(fx,fz);
 let ok=true;
-// 检查 3x3 范围的列，每列从 surface+1 到 surface+4 必须都是空气
-for(let dx=-1;dx<=1;dx++){
-for(let dz=-1;dz<=1;dz++){
-for(let dy=1;dy<=4;dy++){
-if(generateBlock(fx+dx,surface+dy,fz+dz)!==null){
-ok=false;break;
-}
-}
-if(!ok)break;
-}
-if(!ok)break;
+for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++)for(let dy=1;dy<=4;dy++){
+if(generateBlock(fx+dx,surface+dy,fz+dz)!==null){ok=false;break}
 }
 if(ok)return new THREE.Vector3(x+.5,surface+2,z+.5);
 }
-// 兜底
 for(let r=0;r<300;r++){
 for(let x=-r;x<=r;x++)for(let z=-r;z<=r;z++){
 const surface=getHeight(x,z);
@@ -816,8 +861,8 @@ const sunHeight=Math.sin(angle);
 const dayness=Math.max(0,sunHeight);
 const v=brightnessLevel/100;
 sunLight.intensity=(.2+dayness*.7)*v;
-ambientLight.intensity=(.15+dayness*.4)*v;
-fillLight.intensity=.15*v;
+ambientLight.intensity=(.12+dayness*.28)*v;
+fillLight.intensity=.1*v;
 const skyColor=SKY_NIGHT.clone().lerp(SKY_DAY,dayness);
 scene.background=skyColor;
 scene.fog.color=skyColor;
@@ -911,7 +956,6 @@ joystick:document.getElementById('joystick').getBoundingClientRect(),
 slots:[...document.querySelectorAll('.hotbar-slot')].map(el=>({el,rect:el.getBoundingClientRect(),type:el.dataset.type}))
 };
 }
-// ==================== 摇杆 ====================
 const joystick=document.getElementById('joystick');
 const knob=document.getElementById('joystick-knob');
 let joyCenter={x:0,y:0};
@@ -932,7 +976,7 @@ let saveTimer=null;
 function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveToLocal,500)}
 function getSaveData(){
 return{
-version:2,seed:WORLD_SEED,worldType,worldTime,dayNightMode,
+version:3,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,
 modifications:[...modifications],
 inventory,
 player:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch},
@@ -947,6 +991,7 @@ if(Number.isFinite(data.seed))WORLD_SEED=data.seed;
 if(data.worldType)worldType=data.worldType;
 if(Number.isFinite(data.worldTime))worldTime=data.worldTime;
 if(data.dayNightMode)dayNightMode=data.dayNightMode;
+if(data.forcedWeather)forcedWeather=data.forcedWeather;
 modifications.clear();
 if(Array.isArray(data.modifications)){
 for(const e of data.modifications){
@@ -1025,6 +1070,7 @@ localStorage.removeItem(CONST.SAVE_KEY);
 WORLD_SEED=Math.floor(Math.random()*1e9);
 if(newType)worldType=newType;
 worldTime=CONST.DAY_DURATION*.35;
+caveColumnCache.clear();
 modifications.clear();
 clearAllWorldMeshes();
 clearAllDrops();
@@ -1041,7 +1087,6 @@ player.onGround=false;
 updateRender();
 toast('新世界已生成');
 }
-// ==================== 事件 ====================
 document.getElementById('settingsBtn').addEventListener('click',e=>{e.preventDefault();openSettings()});
 document.getElementById('saveBtn').addEventListener('click',e=>{e.preventDefault();exportSave()});
 document.getElementById('loadBtn').addEventListener('click',e=>{e.preventDefault();importSave()});
@@ -1073,6 +1118,8 @@ moveSpeed=Number(e.target.value);
 document.getElementById('speedVal').textContent=moveSpeed;
 });
 document.getElementById('dayNightSelect').addEventListener('change',e=>{dayNightMode=e.target.value});
+// ★ 强制天气
+document.getElementById('weatherSelect').addEventListener('change',e=>{forcedWeather=e.target.value});
 document.getElementById('flyToggle').addEventListener('change',e=>{
 flyingMode=e.target.checked;
 if(!flyingMode){player.vy=0;unstickPlayer()}
@@ -1252,7 +1299,6 @@ requestAnimationFrame(update);
 window.addEventListener('resize',resizeRenderer);
 window.addEventListener('orientationchange',()=>setTimeout(resizeRenderer,200));
 window.addEventListener('beforeunload',saveToLocal);
-// ==================== 启动 ====================
 initWeatherSystem();
 buildHotbar();
 if(loadFromLocal()){
@@ -1264,6 +1310,7 @@ worldTime=CONST.DAY_DURATION*.35;
 }
 document.getElementById('worldTypeSelect').value=worldType;
 document.getElementById('dayNightSelect').value=dayNightMode;
+document.getElementById('weatherSelect').value=forcedWeather;
 resizeRenderer();
 updateRender();
 updateFlyButtons();
