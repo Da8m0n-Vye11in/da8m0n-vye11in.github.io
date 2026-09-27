@@ -44,7 +44,6 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 .panel-btn{display:block;width:100%;padding:12px;margin-top:10px;background:rgba(80,120,180,.9);color:#fff;border:2px solid rgba(255,255,255,.35);border-radius:4px;font-size:14px;font-family:inherit;cursor:pointer}
 .panel-btn:active{background:rgba(100,140,200,.9)}
 .panel-btn.danger{background:rgba(180,80,80,.9)}
-.panel-btn:disabled{background:rgba(80,80,80,.5);cursor:not-allowed}
 #inventoryGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .inv-slot{aspect-ratio:1;border-radius:4px;border:2px solid rgba(255,255,255,.3);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;text-shadow:1px 1px 1px #000;cursor:pointer;position:relative}
 .inv-slot.selected{border-color:#ffd966;box-shadow:0 0 8px #ffd966}
@@ -60,10 +59,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 #miniMenu .mini-btn{padding:10px 20px;background:rgba(80,120,180,.9);color:#fff;border:2px solid rgba(255,255,255,.3);border-radius:4px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
 #miniMenu .mini-btn:active{background:rgba(100,140,200,.9)}
 #fileInput{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0}
+/* 沙尘暴全屏覆盖 */
+#sandstormOverlay{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5;opacity:0;transition:opacity .8s;background:linear-gradient(0deg,rgba(220,180,90,.5),rgba(200,160,80,.4))}
 </style>
 </head>
 <body>
 <canvas id="gameCanvas"></canvas>
+<div id="sandstormOverlay"></div>
 <div id="crosshair"></div>
 <div id="hud">加载中...</div>
 <div id="topBar">
@@ -112,7 +114,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 <span class="val" id="speedVal">6</span></div>
 <div class="setting-row"><label>飞行模式</label>
 <input type="checkbox" id="flyToggle"></div>
-<div class="setting-row"><label>旁观模式（X光透视）</label>
+<div class="setting-row"><label>旁观模式（透视）</label>
 <input type="checkbox" id="spectatorToggle"></div>
 <button class="panel-btn" id="closeSettings">关闭</button>
 <button class="panel-btn danger" id="applyWorldBtn">应用世界类型（会重置世界）</button>
@@ -147,7 +149,7 @@ const RECIPES=[{id:'plank',inputs:{wood:1},outputs:{plank:4},name:'原木 → �
 const CONST={
 GRAVITY:22,JUMP_SPEED:8.5,
 PLAYER_W:.6,PLAYER_H:1.8,EYE_H:1.6,
-SAVE_KEY:'minicraft_single_v1',
+SAVE_KEY:'minicraft_single_v2',
 FIXED_DT:1/60,
 LONG_PRESS_MS:450,MOVE_THRESHOLD:25,SWEEP_STEP:.05,
 PITCH_LIMIT:1.45,MAX_TORCH_LIGHTS:3,
@@ -195,24 +197,18 @@ else if(b==='plains')h=20+noise2(x*.15,z*.15,WORLD_SEED+3)*3;
 else h=22+noise2(x*.2,z*.2,WORLD_SEED+4)*5+noise2(x*.05,z*.05,WORLD_SEED+5)*4;
 return Math.floor(h);
 }
+// ★ 修复：简化的洞穴生成，使用更清晰的阈值
 function isCave(x,y,z){
-if(y<1)return false;
+if(y<2)return false;
 const surface=getHeight(x,z);
 if(y>surface-2)return false;
-const depth=surface-y;
-const c1=noise3(x*.045,y*.06,z*.045,WORLD_SEED+100);
-const c2=noise3(x*.09,y*.12,z*.09,WORLD_SEED+200)*.5;
-const th=0.82-Math.min(depth/60,.20);
-if(c1+c2>th)return true;
-if(depth>4){
-const n1=noise3(x*.04,y*.05,z*.04,WORLD_SEED+300);
-const n2=noise3(x*.04,y*.05,z*.04,WORLD_SEED+400);
-if(Math.abs(n1-.5)<.045&&Math.abs(n2-.5)<.045)return true;
-}
-if(depth>10){
-const cy=noise3(x*.012,y*.006,z*.012,WORLD_SEED+500);
-if(cy>.76)return true;
-}
+// 洞穴：3D 噪声
+const n=noise3(x*.06,y*.06,z*.06,WORLD_SEED+100);
+if(n>.62)return true;
+// 隧道：两个噪声的等值面相交
+const n1=noise3(x*.05,y*.05,z*.05,WORLD_SEED+200);
+const n2=noise3(x*.05,y*.05,z*.05,WORLD_SEED+300);
+if(Math.abs(n1-.5)<.05&&Math.abs(n2-.5)<.05)return true;
 return false;
 }
 function hasTree(x,z){if(getBiome(x,z)!=='forest')return false;return hash2(x,z,WORLD_SEED+400)<.10}
@@ -281,7 +277,17 @@ tex.minFilter=THREE.NearestFilter;
 return tex;
 }
 const BLOCK_GEOMETRY=new THREE.BoxGeometry(1,1,1);
-const BLOCK_MATERIALS={},SPECTATOR_MATERIALS={};
+const BLOCK_MATERIALS={};
+// ★ 旁观模式：纯线框材质
+const SPECTATOR_MATERIAL=new THREE.MeshBasicMaterial({
+color:0x66ddff,
+wireframe:true,
+transparent:true,
+opacity:0.35,
+depthWrite:false,
+});
+const SPECTATOR_MATERIAL_ARRAY=Array(6).fill(SPECTATOR_MATERIAL);
+
 (function buildMaterials(){
 const gt=makeTexture(BLOCK_CONFIG.grass.top);
 const gb=makeTexture(BLOCK_CONFIG.grass.bottom);
@@ -298,19 +304,18 @@ const mat=new THREE.MeshLambertMaterial({map:makeTexture(cfg.color)});
 if(cfg.emissive){mat.emissive=new THREE.Color(cfg.color);mat.emissiveIntensity=.6}
 BLOCK_MATERIALS[k]=mat;
 }
-for(const k in BLOCK_MATERIALS){
-const src=BLOCK_MATERIALS[k];
-if(Array.isArray(src)){
-SPECTATOR_MATERIALS[k]=src.map(m=>{const t=m.clone();t.transparent=true;t.opacity=.12;t.depthWrite=false;return t});
-}else{
-const t=src.clone();t.transparent=true;t.opacity=.12;t.depthWrite=false;SPECTATOR_MATERIALS[k]=t;
-}
-}
 })();
 function setSpectatorVisual(on){
 for(const mesh of renderedMeshes.values()){
-const type=mesh.userData.type;
-mesh.material=on?SPECTATOR_MATERIALS[type]:BLOCK_MATERIALS[type];
+if(on){
+mesh.material=SPECTATOR_MATERIAL_ARRAY;
+mesh.castShadow=false;
+mesh.receiveShadow=false;
+}else{
+mesh.material=BLOCK_MATERIALS[mesh.userData.type];
+mesh.castShadow=true;
+mesh.receiveShadow=true;
+}
 }
 }
 const TORCH_GEOMETRY=new THREE.BoxGeometry(.25,.6,.25);
@@ -342,15 +347,22 @@ const renderedMeshes=new Map();
 function addMeshAt(x,y,z,type){
 const k=worldKey(x,y,z);
 if(renderedMeshes.has(k))return;
-const mat=spectatorMode?SPECTATOR_MATERIALS[type]:BLOCK_MATERIALS[type];
 let mesh;
-if(type==='torch'){mesh=new THREE.Mesh(TORCH_GEOMETRY,mat);mesh.position.set(x+.5,y+.3,z+.5)}
-else{mesh=new THREE.Mesh(BLOCK_GEOMETRY,mat);mesh.position.set(x+.5,y+.5,z+.5)}
+if(spectatorMode){
+mesh=type==='torch'?new THREE.Mesh(TORCH_GEOMETRY,SPECTATOR_MATERIAL):new THREE.Mesh(BLOCK_GEOMETRY,SPECTATOR_MATERIAL_ARRAY);
+mesh.position.set(x+.5,y+(type==='torch'?.3:.5),z+.5);
+mesh.castShadow=false;
+mesh.receiveShadow=false;
+}else{
+const mat=BLOCK_MATERIALS[type];
+mesh=type==='torch'?new THREE.Mesh(TORCH_GEOMETRY,mat):new THREE.Mesh(BLOCK_GEOMETRY,mat);
+mesh.position.set(x+.5,y+(type==='torch'?.3:.5),z+.5);
+mesh.castShadow=true;
+mesh.receiveShadow=true;
+}
 mesh.userData={x,y,z,type};
 mesh.matrixAutoUpdate=false;
 mesh.updateMatrix();
-mesh.castShadow=!spectatorMode;
-mesh.receiveShadow=!spectatorMode;
 scene.add(mesh);
 renderedMeshes.set(k,mesh);
 if(type==='torch')addTorchLight(x,y,z);
@@ -360,7 +372,6 @@ function updateRender(){
 const cx=Math.floor(player.pos.x),cz=Math.floor(player.pos.z);
 const needed=new Set();
 const R=renderDistance;
-// ★ 关键修复：y 范围从 -2 到 64 全覆盖
 const yMin=1;
 const yMax=Math.max(64,Math.ceil(player.pos.y)+10);
 for(let dx=-R;dx<=R;dx++){
@@ -446,26 +457,53 @@ if(d.age>60){scene.remove(d.mesh);drops.splice(i,1)}
 }
 }
 function clearAllDrops(){for(const d of drops)scene.remove(d.mesh);drops.length=0}
-// ==================== 天气 ====================
+// ==================== 天气系统（★ 重写） ====================
 let weather={type:'clear',remaining:90,intensity:0};
-let weatherParticles=null;
+// 雨：LineSegments
+let rainLines=null;
+// 雪：Points
+let snowPoints=null;
+// 沙尘暴：CSS 覆盖 + 飘动粒子
+let sandPoints=null;
+const sandOverlay=document.getElementById('sandstormOverlay');
+
 function initWeatherSystem(){
-const count=1500;
-const positions=new Float32Array(count*3);
-const geo=new THREE.BufferGeometry();
-geo.setAttribute('position',new THREE.BufferAttribute(positions,3));
-const mat=new THREE.PointsMaterial({color:0xffffff,size:.1,transparent:true,opacity:0,depthWrite:false,sizeAttenuation:true});
-const points=new THREE.Points(geo,mat);
-points.visible=false;
-points.frustumCulled=false;
-scene.add(points);
-weatherParticles={points,positions,count};
+// 雨
+const rainCount=800;
+const rainPos=new Float32Array(rainCount*6);
+const rainGeo=new THREE.BufferGeometry();
+rainGeo.setAttribute('position',new THREE.BufferAttribute(rainPos,3));
+const rainMat=new THREE.LineBasicMaterial({color:0x5599ff,transparent:true,opacity:0});
+rainLines=new THREE.LineSegments(rainGeo,rainMat);
+rainLines.frustumCulled=false;
+rainLines.visible=false;
+scene.add(rainLines);
+rainLines.userData={count:rainCount,positions:rainPos};
+
+// 雪
+const snowCount=800;
+const snowPos=new Float32Array(snowCount*3);
+const snowGeo=new THREE.BufferGeometry();
+snowGeo.setAttribute('position',new THREE.BufferAttribute(snowPos,3));
+const snowMat=new THREE.PointsMaterial({color:0xffffff,size:.18,transparent:true,opacity:0,depthWrite:false,sizeAttenuation:true});
+snowPoints=new THREE.Points(snowGeo,snowMat);
+snowPoints.frustumCulled=false;
+snowPoints.visible=false;
+scene.add(snowPoints);
+snowPoints.userData={count:snowCount,positions:snowPos};
+
+// 沙尘暴粒子
+const sandCount=400;
+const sandPos=new Float32Array(sandCount*3);
+const sandGeo=new THREE.BufferGeometry();
+sandGeo.setAttribute('position',new THREE.BufferAttribute(sandPos,3));
+const sandMat=new THREE.PointsMaterial({color:0xddaa55,size:.35,transparent:true,opacity:0,depthWrite:false,sizeAttenuation:true});
+sandPoints=new THREE.Points(sandGeo,sandMat);
+sandPoints.frustumCulled=false;
+sandPoints.visible=false;
+scene.add(sandPoints);
+sandPoints.userData={count:sandCount,positions:sandPos};
 }
-const WEATHER_CFG={
-rain:{color:0x88aaff,size:.09,speedY:-22,sway:1.2},
-snow:{color:0xffffff,size:.16,speedY:-2.5,sway:.6},
-sandstorm:{color:0xddaa55,size:.22,speedY:-1.5,sway:10}
-};
 function pickNextWeather(){
 const r=Math.random();
 if(r<.5)weather.type='clear';
@@ -475,33 +513,81 @@ else weather.type='sandstorm';
 weather.remaining=CONST.WEATHER_MIN+Math.random()*(CONST.WEATHER_MAX-CONST.WEATHER_MIN);
 }
 function updateWeather(dt){
-if(!weatherParticles)return;
 weather.remaining-=dt;
 if(weather.remaining<=0)pickNextWeather();
 const target=weather.type==='clear'?0:1;
 weather.intensity+=(target-weather.intensity)*dt*.4;
-if(weather.type==='clear'||weather.intensity<.05){weatherParticles.points.visible=false;return}
-const cfg=WEATHER_CFG[weather.type];
-weatherParticles.points.visible=true;
-weatherParticles.points.material.color.setHex(cfg.color);
-weatherParticles.points.material.size=cfg.size;
-weatherParticles.points.material.opacity=weather.intensity*.75;
 const px=player.pos.x,py=player.pos.y,pz=player.pos.z;
+
+// 雨
+if(weather.type==='rain'&&weather.intensity>.05){
+rainLines.visible=true;
+rainLines.material.opacity=weather.intensity*.7;
+const arr=rainLines.userData.positions;
+const N=rainLines.userData.count;
 const R=22,H=24;
-const arr=weatherParticles.positions;
-for(let i=0;i<weatherParticles.count;i++){
+for(let i=0;i<N;i++){
+const o=i*6;
+let x=arr[o],y=arr[o+1],z=arr[o+2];
+if(Math.abs(x-px)>R||Math.abs(z-pz)>R||y<py-H/2||y>py+H/2){
+x=px+(Math.random()-.5)*R*2;
+y=py+H/2-Math.random()*H;
+z=pz+(Math.random()-.5)*R*2;
+}
+y-=22*dt;
+arr[o]=x;arr[o+1]=y;arr[o+2]=z;
+arr[o+3]=x;arr[o+4]=y-0.7;arr[o+5]=z;
+}
+rainLines.geometry.attributes.position.needsUpdate=true;
+}else{rainLines.visible=false}
+
+// 雪
+if(weather.type==='snow'&&weather.intensity>.05){
+snowPoints.visible=true;
+snowPoints.material.opacity=weather.intensity*.9;
+const arr=snowPoints.userData.positions;
+const N=snowPoints.userData.count;
+const R=22,H=24;
+for(let i=0;i<N;i++){
 let x=arr[i*3],y=arr[i*3+1],z=arr[i*3+2];
 if(Math.abs(x-px)>R||Math.abs(z-pz)>R||y<py-H/2||y>py+H/2){
 x=px+(Math.random()-.5)*R*2;
 y=py+H/2-Math.random()*H;
 z=pz+(Math.random()-.5)*R*2;
 }
-y+=cfg.speedY*dt;
-x+=(Math.random()-.5)*cfg.sway*dt;
-z+=(Math.random()-.5)*cfg.sway*dt;
+y-=2.5*dt;
+x+=(Math.random()-.5)*.6*dt;
+z+=(Math.random()-.5)*.6*dt;
 arr[i*3]=x;arr[i*3+1]=y;arr[i*3+2]=z;
 }
-weatherParticles.points.geometry.attributes.position.needsUpdate=true;
+snowPoints.geometry.attributes.position.needsUpdate=true;
+}else{snowPoints.visible=false}
+
+// 沙尘暴：CSS 覆盖 + 飘动粒子
+if(weather.type==='sandstorm'&&weather.intensity>.05){
+sandOverlay.style.opacity=weather.intensity*.75;
+sandPoints.visible=true;
+sandPoints.material.opacity=weather.intensity*.9;
+const arr=sandPoints.userData.positions;
+const N=sandPoints.userData.count;
+const R=22,H=24;
+for(let i=0;i<N;i++){
+let x=arr[i*3],y=arr[i*3+1],z=arr[i*3+2];
+if(Math.abs(x-px)>R||Math.abs(z-pz)>R||y<py-H/2||y>py+H/2){
+x=px+(Math.random()-.5)*R*2;
+y=py+(Math.random()-.5)*H;
+z=pz+(Math.random()-.5)*R*2;
+}
+x+=(Math.random()-.5)*8*dt;
+y+=(Math.random()-.5)*2*dt;
+z+=(Math.random()-.5)*8*dt;
+arr[i*3]=x;arr[i*3+1]=y;arr[i*3+2]=z;
+}
+sandPoints.geometry.attributes.position.needsUpdate=true;
+}else{
+sandOverlay.style.opacity=0;
+sandPoints.visible=false;
+}
 }
 // ==================== 碰撞 ====================
 function isColliding(pos){
@@ -677,26 +763,35 @@ if(type)spawnDrop(x+.5,y+.5,z+.5,type);
 applyGravityToColumn(x,z,y+1);
 scheduleSave();
 }
-// ==================== 出生点（★ 修复） ====================
+// ==================== 出生点（★ 修复：3x3 范围全清空） ====================
 function randomSpawn(){
-for(let i=0;i<200;i++){
-const x=(Math.random()-.5)*200;
-const z=(Math.random()-.5)*200;
+for(let i=0;i<500;i++){
+const x=(Math.random()-.5)*400;
+const z=(Math.random()-.5)*400;
 const fx=Math.floor(x),fz=Math.floor(z);
 const surface=getHeight(fx,fz);
 let ok=true;
-for(let dy=1;dy<=3;dy++){
-if(generateBlock(fx,surface+dy,fz)!==null){ok=false;break}
+// 检查 3x3 范围的列，每列从 surface+1 到 surface+4 必须都是空气
+for(let dx=-1;dx<=1;dx++){
+for(let dz=-1;dz<=1;dz++){
+for(let dy=1;dy<=4;dy++){
+if(generateBlock(fx+dx,surface+dy,fz+dz)!==null){
+ok=false;break;
+}
+}
+if(!ok)break;
+}
+if(!ok)break;
 }
 if(ok)return new THREE.Vector3(x+.5,surface+2,z+.5);
 }
-// 兜底：从原点向外扫
-for(let r=0;r<200;r++){
+// 兜底
+for(let r=0;r<300;r++){
 for(let x=-r;x<=r;x++)for(let z=-r;z<=r;z++){
 const surface=getHeight(x,z);
 let ok=true;
-for(let dy=1;dy<=3;dy++){
-if(generateBlock(x,surface+dy,z)!==null){ok=false;break}
+for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++)for(let dy=1;dy<=4;dy++){
+if(generateBlock(x+dx,surface+dy,z+dz)!==null){ok=false;break}
 }
 if(ok)return new THREE.Vector3(x+.5,surface+2,z+.5);
 }
@@ -837,7 +932,7 @@ let saveTimer=null;
 function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveToLocal,500)}
 function getSaveData(){
 return{
-version:1,seed:WORLD_SEED,worldType,worldTime,dayNightMode,
+version:2,seed:WORLD_SEED,worldType,worldTime,dayNightMode,
 modifications:[...modifications],
 inventory,
 player:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch},
