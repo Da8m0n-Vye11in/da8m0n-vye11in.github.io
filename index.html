@@ -54,10 +54,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 .craft-row .craft-info{flex:1;font-size:12px}
 .craft-row .craft-btn{padding:8px 14px;background:rgba(80,150,80,.9);color:#fff;border:2px solid rgba(255,255,255,.3);border-radius:4px;font-size:13px;cursor:pointer}
 .craft-row .craft-btn:disabled{background:rgba(80,80,80,.5);cursor:not-allowed}
-#miniMenu{position:fixed;bottom:82px;left:50%;transform:translateX(-120px);background:rgba(30,30,40,.97);border:3px solid rgba(255,255,255,.5);border-radius:8px;padding:8px;z-index:200;display:none;flex-direction:column;>
-gap:6px}
-#miniMenu.show{display<div:flex}
-#miniMenu .mini-btn class{padding:10px 20px=";background:rgba(80,120,180panel,.9);color:#fff;border:2"px solid rgba(255,255,255 id,.3);border-radius:4px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
+#miniMenu{position:fixed;bottom:82px;left:50%;transform:translateX(-120px);background:rgba(30,30,40,.97);border:3px solid rgba(255,255,255,.5);border-radius:8px;padding:8px;z-index:200;display:none;flex-direction:column;gap:6px}
+#miniMenu.show{display:flex}
+#miniMenu .mini-btn{padding:10px 20px;background:rgba(80,120,180,.9);color:#fff;border:2px solid rgba(255,255,255,.3);border-radius:4px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap}
 #miniMenu .mini-btn:active{background:rgba(100,140,200,.9)}
 #fileInput{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0}
 #sandstormOverlay{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5;opacity:0;transition:opacity .8s;background:linear-gradient(0deg,rgba(220,180,90,.5),rgba(200,160,80,.4))}
@@ -86,7 +85,8 @@ gap:6px}
 <div id="jumpBtn">跳</div>
 <div id="downBtn">▼</div>
 <div id="longpressHint"></div>
-<div id="toast"></div="settingsPanel">
+<div id="toast"></div>
+<div class="panel" id="settingsPanel">
 <h3>⚙️ 设置</h3>
 <div class="setting-row"><label>世界类型</label>
 <select id="worldTypeSelect">
@@ -156,7 +156,7 @@ const RECIPES=[{id:'plank',inputs:{wood:1},outputs:{plank:4},name:'原木 → �
 const CONST={
 GRAVITY:22,JUMP_SPEED:8.5,
 PLAYER_W:.6,PLAYER_H:1.8,EYE_H:1.6,
-SAVE_KEY:'minicraft_v3',
+SAVE_KEY:'minicraft_v4',
 FIXED_DT:1/60,
 LONG_PRESS_MS:450,MOVE_THRESHOLD:25,SWEEP_STEP:.05,
 PITCH_LIMIT:1.45,MAX_TORCH_LIGHTS:3,
@@ -217,7 +217,6 @@ const n2=noise3(x*.05,y*.05,z*.05,WORLD_SEED+300);
 if(Math.abs(n1-.5)<.05&&Math.abs(n2-.5)<.05)return true;
 return false;
 }
-// ★ 洞穴列缓存：如果一列的任意深度有洞穴，就返回 true
 const caveColumnCache=new Map();
 function hasCaveInColumn(x,z){
 const k=`${x},${z}`;
@@ -249,10 +248,7 @@ return null;
 function generateBlock(x,y,z){
 if(y<0)return null;
 if(y===0)return'bedrock';
-// ★ 洞穴标柱：如果这一列有洞穴，就在 y=1 到 MAX_Y 生成泥土柱（覆盖普通地形）
-if(y>=1&&y<=CONST.MAX_Y&&hasCaveInColumn(x,z)){
-return'dirt';
-}
+if(y>=1&&y<=CONST.MAX_Y&&hasCaveInColumn(x,z))return'dirt';
 const surface=getHeight(x,z);
 const biome=getBiome(x,z);
 if(y<surface-1&&isCave(x,y,z))return null;
@@ -264,18 +260,15 @@ const depth=surface-y;
 if(depth<=3)return biome==='desert'?'sand':'dirt';
 return'stone';
 }
-// ==================== 世界数据 ====================
 const modifications=new Map();
 const worldKey=(x,y,z)=>`${x},${y},${z}`;
 function getBlockType(x,y,z){const k=worldKey(x,y,z);if(modifications.has(k))return modifications.get(k);if(y===0)return'bedrock';return generateBlock(x,y,z)}
 function isSolid(x,y,z){return getBlockType(x,y,z)!==null}
 function setBlock(x,y,z,type){modifications.set(worldKey(x,y,z),type)}
-// ★ 天空暴露检测（用于选择亮/暗材质）
-function hasSkyAccess(x,y,z){
-for(let cy=y+1;cy<y+22;cy++){
-if(isSolid(x,cy,z))return false;
-}
-return true;
+// ★ O(1) 光照判断
+function isLitBySky(x,y,z){
+const surface=getHeight(x,z);
+return y>=surface-3;
 }
 // ==================== 场景 ====================
 const scene=new THREE.Scene();
@@ -306,10 +299,9 @@ tex.magFilter=THREE.NearestFilter;
 tex.minFilter=THREE.NearestFilter;
 return tex;
 }
-// 创建亮/暗两套材质
 function makeDimMaterial(src){
 const dim=src.clone();
-dim.color=new THREE.Color(0.35,0.35,0.35); // 乘性变暗
+dim.color=new THREE.Color(0.35,0.35,0.35);
 return dim;
 }
 const BLOCK_GEOMETRY=new THREE.BoxGeometry(1,1,1);
@@ -333,7 +325,6 @@ const cfg=BLOCK_CONFIG[k];
 const mat=new THREE.MeshLambertMaterial({map:makeTexture(cfg.color)});
 if(cfg.emissive){mat.emissive=new THREE.Color(cfg.color);mat.emissiveIntensity=.6}
 BLOCK_MATERIALS[k]=mat;
-// 火把不需要暗色版本（本身发光）
 if(k==='torch'){
 BLOCK_MATERIALS_DIM[k]=mat;
 }else{
@@ -348,10 +339,9 @@ mesh.material=SPECTATOR_MATERIAL_ARRAY;
 mesh.castShadow=false;
 mesh.receiveShadow=false;
 }else{
-// 根据光照重新选择材质
 const type=mesh.userData.type;
 const {x,y,z}=mesh.userData;
-const useDim=type!=='torch'&&!hasSkyAccess(x,y,z);
+const useDim=type!=='torch'&&!isLitBySky(x,y,z);
 mesh.material=useDim?BLOCK_MATERIALS_DIM[type]:BLOCK_MATERIALS[type];
 mesh.castShadow=true;
 mesh.receiveShadow=true;
@@ -377,7 +367,7 @@ const sunSphere=new THREE.Mesh(new THREE.SphereGeometry(4,12,12),new THREE.MeshB
 scene.add(sunSphere);
 const moonSphere=new THREE.Mesh(new THREE.SphereGeometry(3,12,12),new THREE.MeshBasicMaterial({color:0xeeeeff,fog:false}));
 scene.add(moonSphere);
-// ==================== 火把光（★ 缩短半径，让遮挡更明显） ====================
+// ==================== 火把光 ====================
 const torchLights=new Map();
 function addTorchLight(x,y,z){const k=worldKey(x,y,z);if(torchLights.has(k))return;const light=new THREE.PointLight(0xffcc55,1.0,5);light.position.set(x+.5,y+.3,z+.5);scene.add(light);torchLights.set(k,light);pruneTorchLights()}
 function removeTorchLight(x,y,z){const k=worldKey(x,y,z);const l=torchLights.get(k);if(l){scene.remove(l);torchLights.delete(k)}}
@@ -394,7 +384,7 @@ mesh.position.set(x+.5,y+(type==='torch'?.3:.5),z+.5);
 mesh.castShadow=false;
 mesh.receiveShadow=false;
 }else{
-const useDim=type!=='torch'&&!hasSkyAccess(x,y,z);
+const useDim=type!=='torch'&&!isLitBySky(x,y,z);
 const mat=useDim?BLOCK_MATERIALS_DIM[type]:BLOCK_MATERIALS[type];
 mesh=type==='torch'?new THREE.Mesh(TORCH_GEOMETRY,mat):new THREE.Mesh(BLOCK_GEOMETRY,mat);
 mesh.position.set(x+.5,y+(type==='torch'?.3:.5),z+.5);
@@ -409,10 +399,9 @@ renderedMeshes.set(k,mesh);
 if(type==='torch')addTorchLight(x,y,z);
 }
 function removeMeshAt(x,y,z){const k=worldKey(x,y,z);const m=renderedMeshes.get(k);if(m){scene.remove(m);renderedMeshes.delete(k)}removeTorchLight(x,y,z)}
-// ★ 更新一个方块的光照状态
+// ★ 光照刷新：半径从 22 降到 10
 function refreshLightingAround(x,y,z){
-// 更新周围 22 格内的方块材质（因为 hasSkyAccess 可能变化）
-const R=22;
+const R=10;
 for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){
 for(let dy=-R;dy<=R;dy++){
 const cx=x+dx,cy=y+dy,cz=z+dz;
@@ -422,7 +411,7 @@ const mesh=renderedMeshes.get(k);
 if(!mesh)continue;
 const type=mesh.userData.type;
 if(type==='torch')continue;
-const useDim=!hasSkyAccess(cx,cy,cz);
+const useDim=!isLitBySky(cx,cy,cz);
 const newMat=useDim?BLOCK_MATERIALS_DIM[type]:BLOCK_MATERIALS[type];
 if(mesh.material!==newMat)mesh.material=newMat;
 }
@@ -501,10 +490,10 @@ let ny=d.mesh.position.y+d.vy*dt;
 const bottom=ny-.14;
 const floorY=Math.floor(bottom);
 const bx=Math.floor(d.mesh.position.x),bz=Math.floor(d.mesh.position.z);
-if(isSolid(bx,floorY,bz)){ny=floorY+1+.14;if(d.vy<0)d.vy=0}
-d.mesh.position.y=ny+Math.sin(d.bobPhase)*.03;
-const dx=player.pos.x-d.mesh.position.x;
-const dy=(player.pos.y+.9)-d.mesh.position.y;
+if(isSolid(bx,floorY,bz)){ny=floorY+1+.14;if(d.vy<0)d.9vy=0}
+d.mesh.position.y=)-ny+Math.sin(d.bobPhase)*d.03;
+const dx=player.pos.x-d.m.mesh.position.x;
+const dy=(player.pos.yesh+..position.y;
 const dz=player.pos.z-d.mesh.position.z;
 if(dx*dx+dy*dy+dz*dz<2.25){
 inventory[d.type]=(inventory[d.type]||0)+1;
@@ -564,7 +553,6 @@ else weather.type='sandstorm';
 weather.remaining=CONST.WEATHER_MIN+Math.random()*(CONST.WEATHER_MAX-CONST.WEATHER_MIN);
 }
 function updateWeather(dt){
-// ★ 强制天气：绕过时间规则
 if(forcedWeather!=='auto'){
 weather.type=forcedWeather;
 weather.remaining=Infinity;
@@ -793,29 +781,26 @@ const pMinZ=player.pos.z-CONST.PLAYER_W/2,pMaxZ=player.pos.z+CONST.PLAYER_W/2;
 if(pMaxX>tx&&pMinX<tx+1&&pMaxY>ty&&pMinY<ty+1&&pMaxZ>tz&&pMinZ<tz+1)return;
 setBlock(tx,ty,tz,currentBlock);
 addMeshAt(tx,ty,tz,currentBlock);
-// ★ 更新周围光照
 refreshLightingAround(tx,ty,tz);
 inventory[currentBlock]--;
 updateHotbarCounts();
 if(currentBlock==='sand')applyGravityToColumn(tx,tz,ty);
 scheduleSave();
 }
+// ★ 修复：允许挖脚下
 function tryBreak(){
 if(spectatorMode)return;
 const hit=raycast();
 if(!hit)return;
 const{x,y,z}=hit.block;
 if(y===0)return toast('基岩无法破坏');
-const fx=Math.floor(player.pos.x),fz=Math.floor(player.pos.z);
-const fy=Math.floor(player.pos.y-.05);
-if(x===fx&&y===fy&&z===fz)return toast('不能挖脚下');
 const type=getBlockType(x,y,z);
 setBlock(x,y,z,null);
 removeMeshAt(x,y,z);
-// ★ 更新周围光照
 refreshLightingAround(x,y,z);
 if(type)spawnDrop(x+.5,y+.5,z+.5,type);
 applyGravityToColumn(x,z,y+1);
+// 如果脚下被挖空，玩家会自然下落（重力会处理）
 scheduleSave();
 }
 // ==================== 出生点 ====================
@@ -976,7 +961,7 @@ let saveTimer=null;
 function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveToLocal,500)}
 function getSaveData(){
 return{
-version:3,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,
+version:4,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,
 modifications:[...modifications],
 inventory,
 player:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch},
@@ -1118,7 +1103,6 @@ moveSpeed=Number(e.target.value);
 document.getElementById('speedVal').textContent=moveSpeed;
 });
 document.getElementById('dayNightSelect').addEventListener('change',e=>{dayNightMode=e.target.value});
-// ★ 强制天气
 document.getElementById('weatherSelect').addEventListener('change',e=>{forcedWeather=e.target.value});
 document.getElementById('flyToggle').addEventListener('change',e=>{
 flyingMode=e.target.checked;
