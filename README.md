@@ -7,7 +7,7 @@
 
 ## 🎯 项目目标
 
-用纯前端技术（HTML + JavaScript + WebGL）在浏览器中还原 Minecraft 的核心体验：
+在Pre阶段，用纯前端技术（HTML + JavaScript + WebGL）在浏览器中还原 Minecraft 的核心体验：
 方块世界、第一人称探索、挖掘与建造、昼夜与天气、光照与生物群系。
 
 ## 🛠️ 技术栈
