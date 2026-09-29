@@ -74,7 +74,7 @@ python3 -m http.server 8000
 .
 ├── index.html      # 主页面 + 游戏逻辑
 └── lighting.js     # 体素光照引擎
-
+```
 
 # 操作方式
 移动 左下角虚拟摇杆
