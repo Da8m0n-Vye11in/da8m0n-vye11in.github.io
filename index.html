@@ -159,7 +159,7 @@ const RECIPES=[{id:'plank',inputs:{wood:1},outputs:{plank:4},name:'原木 → �
 const CONST={
 GRAVITY:22,JUMP_SPEED:8.5,
 PLAYER_W:.6,PLAYER_H:1.8,EYE_H:1.6,
-SAVE_KEY:'minicraft_v8',
+SAVE_KEY:'minicraft_v9',
 FIXED_DT:1/60,
 LONG_PRESS_MS:450,MOVE_THRESHOLD:25,SWEEP_STEP:.05,
 PITCH_LIMIT:1.45,
@@ -320,9 +320,18 @@ function isSolid(x,y,z){return getBlockType(x,y,z)!==null}
 function setBlock(x,y,z,type){modifications.set(worldKey(x,y,z),type)}
 
 // ==========================================================
-// 光照引擎
+// 光照引擎（防御式加载）
 // ==========================================================
-const lightEngine = new VoxelLight((x, y, z) => getBlockType(x, y, z));
+let lightEngine;
+if (typeof VoxelLight === 'function') {
+    lightEngine = new VoxelLight((x, y, z) => getBlockType(x, y, z));
+} else {
+    console.warn('VoxelLight 未定义，使用全亮降级模式');
+    lightEngine = {
+        rebuild() {}, onBlockChanged() {}, clear() {},
+        getLight() { return 15; }
+    };
+}
 let lastLightX = null, lastLightZ = null;
 
 function rebuildLighting(force) {
@@ -338,7 +347,7 @@ function rebuildLighting(force) {
     lightEngine.rebuild(cx - R, cx + R, cz - R, cz + R, yMax);
 }
 
-const LIGHT_TIERS = [0.22, 0.5, 0.75, 1.0];
+const LIGHT_TIERS = [0.28, 0.52, 0.76, 1.0];
 function getLightTier(level) {
     if (level >= 12) return 3;
     if (level >= 8) return 2;
@@ -357,13 +366,11 @@ scene.fog=new THREE.Fog(0x87CEEB,18,45);
 const camera=new THREE.PerspectiveCamera(70,1,.1,250);
 const canvasElement=document.getElementById('gameCanvas');
 const renderer=new THREE.WebGLRenderer({canvas:canvasElement,antialias:false,powerPreference:'high-performance'});
-renderer.toneMapping=THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure=1.0;
-renderer.outputEncoding=THREE.sRGBEncoding;
+// ★ 不用 tone mapping / sRGB，让 Basic 材质颜色完全原汁原味
 renderer.shadowMap.enabled=false;
 
 // ==========================================================
-// 材质
+// 材质（★ 关键修复：草方块也改成 Basic）
 // ==========================================================
 function makeTexture(color,opts={}){
 const c=document.createElement('canvas');
@@ -400,10 +407,11 @@ const SPECTATOR_MAT_ARRAY=Array(6).fill(SPECTATOR_MAT);
 const gt=makeTexture(BLOCK_CONFIG.grass.top);
 const gb=makeTexture(BLOCK_CONFIG.grass.bottom);
 const gs=makeTexture(BLOCK_CONFIG.grass.side,{sideSplit:true,bottomColor:BLOCK_CONFIG.grass.bottom});
+// ★ 草方块也改用 Basic，让光照分级明显
 BLOCK_MATERIALS_BASE.grass=[
-new THREE.MeshLambertMaterial({map:gs}),new THREE.MeshLambertMaterial({map:gs}),
-new THREE.MeshLambertMaterial({map:gt}),new THREE.MeshLambertMaterial({map:gb}),
-new THREE.MeshLambertMaterial({map:gs}),new THREE.MeshLambertMaterial({map:gs})
+new THREE.MeshBasicMaterial({map:gs}),new THREE.MeshBasicMaterial({map:gs}),
+new THREE.MeshBasicMaterial({map:gt}),new THREE.MeshBasicMaterial({map:gb}),
+new THREE.MeshBasicMaterial({map:gs}),new THREE.MeshBasicMaterial({map:gs})
 ];
 for(const k in BLOCK_CONFIG){
 if(k==='grass')continue;
@@ -437,11 +445,11 @@ function getMaterialForBlock(type, x, y, z) {
 const TORCH_GEOMETRY=new THREE.BoxGeometry(.25,.6,.25);
 
 // ==========================================================
-// 光照辅助光（低环境光让材质分级生效）
+// 环境光（Basic 材质不吃光，这只是太阳/月亮 sphere 的备用）
 // ==========================================================
-const ambientLight=new THREE.AmbientLight(0xffffff,0.85);
+const ambientLight=new THREE.AmbientLight(0xffffff,0.5);
 scene.add(ambientLight);
-const sunLight=new THREE.DirectionalLight(0xffffff,0.15);
+const sunLight=new THREE.DirectionalLight(0xffffff,0.1);
 sunLight.position.set(30,50,30);
 scene.add(sunLight);
 const sunSphere=new THREE.Mesh(new THREE.SphereGeometry(4,8,8),new THREE.MeshBasicMaterial({color:0xffdd44,fog:false}));
@@ -483,7 +491,6 @@ function refreshAfterBlockChange(x, y, z) {
     refreshLightingAround(x, y, z);
 }
 
-// 只更新 lightTier 变化的 mesh
 function refreshLightingAround(x, y, z) {
     const R = 14;
     const minX = x - R, maxX = x + R;
@@ -932,9 +939,6 @@ moonSphere.position.set(camX-sunX,camY-sunY,camZ);
 sunLight.position.set(camX+sunX,camY+sunY,camZ+20);
 const sunHeight=Math.sin(angle);
 const dayness=Math.max(0,sunHeight);
-const v=brightnessLevel/100;
-ambientLight.intensity=(0.55+dayness*.3)*v;
-sunLight.intensity=(0.08+dayness*.15)*v;
 const skyColor=SKY_NIGHT.clone().lerp(SKY_DAY,dayness);
 scene.background=skyColor;
 scene.fog.color=skyColor;
@@ -1087,7 +1091,7 @@ let saveTimer=null;
 function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveToLocal,500)}
 function getSaveData(){
 return{
-version:8,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,
+version:9,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,
 modifications:[...modifications],
 inventory,
 player:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch},
@@ -1407,7 +1411,6 @@ rebuildLighting(false);
 updateRender(false);
 }
 
-// 材质更新：每 0.5 秒
 materialTimer+=frameTime;
 if(materialTimer>CONST.MATERIAL_UPDATE_INTERVAL){
 materialTimer=0;
