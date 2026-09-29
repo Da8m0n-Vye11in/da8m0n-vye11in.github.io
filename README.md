@@ -1,4 +1,4 @@
-# MiniCraft
+#  WebCraft
 
 一个实验性的、将 Minecraft 复刻到网页上的开源项目。
 
