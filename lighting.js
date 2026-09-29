@@ -1,6 +1,6 @@
 // ==========================================================
-// lighting.js v2 — 高性能体素光照引擎
-// 用 Int8Array 存储，BFS 用索引队列，速度更快
+// lighting.js v3 — Minecraft 体素光照引擎
+// 修复：暴露方块本身应得到天空光 15，而不是 0
 // ==========================================================
 (function (global) {
     'use strict';
@@ -14,7 +14,6 @@
     class VoxelLight {
         constructor(getBlockType) {
             this.getBlockType = getBlockType;
-            // 尺寸动态扩展
             this.minX = 0; this.maxX = 0;
             this.minZ = 0; this.maxZ = 0;
             this.yMax = 40;
@@ -26,7 +25,6 @@
         }
 
         _ensureSize(x0, x1, z0, z1, yMax) {
-            // 只在需要时重新分配
             const pad = 2;
             const nx0 = x0 - pad, nx1 = x1 + pad;
             const nz0 = z0 - pad, nz1 = z1 + pad;
@@ -70,21 +68,28 @@
             const skyQ = [];
             const blockQ = [];
 
-            // 天空直射光 + 火把
+            // ★ 关键修复：方块本身也接收天空光
             for (let x = x0; x <= x1; x++) {
                 for (let z = z0; z <= z1; z++) {
                     let level = 15;
                     for (let y = this.yMax; y >= 0; y--) {
                         const t = this.getBlockType(x, y, z);
-                        if (t !== null) level = 0;
+                        const idx = this._idx(x, y, z);
+
+                        // 这一格（无论方块还是空气）都接收当前 level
                         if (level > 0) {
-                            this.skylight[this._idx(x, y, z)] = level;
+                            this.skylight[idx] = level;
                             skyQ.push(x, y, z, level);
                         }
+
+                        // 火把光源
                         if (t === 'torch') {
-                            this.blocklight[this._idx(x, y, z)] = 14;
+                            this.blocklight[idx] = 14;
                             blockQ.push(x, y, z, 14);
                         }
+
+                        // 遇到方块后，下方变暗
+                        if (t !== null) level = 0;
                     }
                 }
             }
@@ -136,21 +141,25 @@
                 }
             }
 
-            // 重算内部
+            // 重算内部：★ 同样修复——方块本身接收天空光
             for (let cx = x0; cx <= x1; cx++) {
                 for (let cz = z0; cz <= z1; cz++) {
                     let level = 15;
                     for (let cy = this.yMax; cy >= 0; cy--) {
                         const t = this.getBlockType(cx, cy, cz);
-                        if (t !== null) level = 0;
+                        const idx = this._idx(cx, cy, cz);
+
                         if (level > 0) {
-                            this.skylight[this._idx(cx, cy, cz)] = level;
+                            this.skylight[idx] = level;
                             skyQ.push(cx, cy, cz, level);
                         }
+
                         if (t === 'torch') {
-                            this.blocklight[this._idx(cx, cy, cz)] = 14;
+                            this.blocklight[idx] = 14;
                             blockQ.push(cx, cy, cz, 14);
                         }
+
+                        if (t !== null) level = 0;
                     }
                 }
             }
@@ -163,42 +172,6 @@
         // BFS 洪水填充
         // ==========================================================
         _flood(queue, map) {
-            let i = 0;
-            const len = queue.length;
-            while (i < len) {
-                const x = queue[i++];
-                const y = queue[i++];
-                const z = queue[i++];
-                const level = queue[i++];
-                if (level <= 1) continue;
-                const nl = level - 1;
-
-                for (let d = 0; d < 18; d += 3) {
-                    const nx = x + DIRS[d];
-                    const ny = y + DIRS[d + 1];
-                    const nz = z + DIRS[d + 2];
-                    if (ny < 0 || ny > this.yMax) continue;
-                    if (!this._inBounds(nx, ny, nz)) continue;
-                    if (this.isBlocked(nx, ny, nz)) continue;
-
-                    const idx = this._idx(nx, ny, nz);
-                    if (map[idx] < nl) {
-                        map[idx] = nl;
-                        queue.push(nx, ny, nz, nl);
-                    }
-                }
-                // 注意：len 只记录初始长度，但 queue 在增长
-                // 所以要用 queue.length 动态判断
-                if (i >= len && i < queue.length) {
-                    // 继续处理新增的
-                }
-            }
-            // 修正：上面逻辑有 bug，用 while i < queue.length
-            // 但为了性能，改成下面的形式
-        }
-
-        // 用简单版本（修正）
-        _floodFixed(queue, map) {
             let i = 0;
             while (i < queue.length) {
                 const x = queue[i++];
@@ -214,9 +187,9 @@
                     const nz = z + DIRS[d + 2];
                     if (ny < 0 || ny > this.yMax) continue;
                     if (!this._inBounds(nx, ny, nz)) continue;
-                    if (this.isBlocked(nx, ny, nz)) continue;
 
                     const idx = this._idx(nx, ny, nz);
+                    // ★ 允许光照扩散到方块本身（让方块也能被相邻光照亮）
                     if (map[idx] < nl) {
                         map[idx] = nl;
                         queue.push(nx, ny, nz, nl);
@@ -242,9 +215,6 @@
             if (this.blocklight) this.blocklight.fill(0);
         }
     }
-
-    // 修正：把 _flood 替换为 _floodFixed
-    VoxelLight.prototype._flood = VoxelLight.prototype._floodFixed;
 
     global.VoxelLight = VoxelLight;
 })(window);
