@@ -161,7 +161,7 @@ const RECIPES=[{id:'plank',inputs:{wood:1},outputs:{plank:4},name:'原木 → �
 const CONST={
 GRAVITY:22,JUMP_SPEED:8.5,
 PLAYER_W:.6,PLAYER_H:1.8,EYE_H:1.6,
-SAVE_KEY:'minicraft_v13',
+SAVE_KEY:'minicraft_v14',
 FIXED_DT:1/60,
 LONG_PRESS_MS:450,MOVE_THRESHOLD:25,SWEEP_STEP:.05,
 PITCH_LIMIT:1.45,
@@ -185,6 +185,7 @@ let worldTime=CONST.DAY_DURATION*0.35;
 let currentBlock='grass';
 let moveInput={x:0,y:0};
 let jumpRequested=false,moveUpRequested=false,moveDownRequested=false;
+let needSkyLightRefresh=false;
 const player={pos:new THREE.Vector3(0,50,0),yaw:0,pitch:-.3,vy:0,onGround:false};
 const inventory={grass:64,dirt:64,stone:64,wood:32,plank:32,leaves:32,sand:32,torch:32};
 
@@ -329,7 +330,10 @@ let lightEngine;
 if (typeof VoxelLight === 'function') {
     lightEngine = new VoxelLight((x, y, z) => getBlockType(x, y, z));
 } else {
-    lightEngine = { rebuild() {}, onBlockChanged() {}, clear() {}, getLight() { return 12; } };
+    lightEngine = {
+        rebuild() {}, onBlockChanged() {}, clear() {}, getLight() { return 12; },
+        getSkyLight(){return 12;}, getBlockLight(){return 0;}, setSkyFactor(){return false;}
+    };
 }
 let lastLightX = null, lastLightZ = null;
 
@@ -350,6 +354,11 @@ const LIGHT_LEVELS = 16;
 function levelToBrightness(level) {
     const l = Math.max(0, Math.min(15, level));
     return 0.18 + (l / 15) * 0.82;
+}
+
+// 取整后的光照等级
+function getBlockLightLevel(x, y, z) {
+    return Math.max(0, Math.min(15, Math.round(lightEngine.getLight(x, y, z))));
 }
 
 // ==========================================================
@@ -432,7 +441,7 @@ for (const k in BLOCK_MATERIALS_BASE) {
 
 function getMaterialForBlock(type, x, y, z) {
     if (spectatorMode) return SPECTATOR_MAT_ARRAY;
-    const level = Math.max(0, Math.min(15, lightEngine.getLight(x, y, z)));
+    const level = getBlockLightLevel(x, y, z);
     return BLOCK_MATERIALS[type][level];
 }
 
@@ -477,7 +486,7 @@ const mat=getMaterialForBlock(type,x,y,z);
 mesh=type==='torch'?new THREE.Mesh(TORCH_GEOMETRY,mat):new THREE.Mesh(BLOCK_GEOMETRY,mat);
 mesh.position.set(x+.5,y+(type==='torch'?.3:.5),z+.5);
 }
-mesh.userData={x,y,z,type,lightTier:type==='torch'?-1:Math.max(0,Math.min(15,lightEngine.getLight(x,y,z)))};
+mesh.userData={x,y,z,type,lightTier:type==='torch'?-1:getBlockLightLevel(x,y,z)};
 mesh.matrixAutoUpdate=false;
 mesh.updateMatrix();
 scene.add(mesh);
@@ -506,14 +515,13 @@ function refreshLightingAround(x, y, z) {
         if (cx < minX || cx > maxX) continue;
         if (cz < minZ || cz > maxZ) continue;
         if (spectatorMode) continue;
-        const newLevel = Math.max(0, Math.min(15, lightEngine.getLight(cx, cy, cz)));
+        const newLevel = getBlockLightLevel(cx, cy, cz);
         if (mesh.userData.lightTier === newLevel) continue;
         mesh.userData.lightTier = newLevel;
         mesh.material = BLOCK_MATERIALS[mesh.userData.type][newLevel];
     }
 }
 
-// ★ 修复：新增 force 参数
 function refreshAllMeshMaterials(force) {
     for (const [k, mesh] of renderedMeshes) {
         if (mesh.userData.type === 'torch') continue;
@@ -521,7 +529,7 @@ function refreshAllMeshMaterials(force) {
             if (mesh.material !== SPECTATOR_MAT_ARRAY) mesh.material = SPECTATOR_MAT_ARRAY;
             continue;
         }
-        const newLevel = Math.max(0, Math.min(15, lightEngine.getLight(mesh.userData.x, mesh.userData.y, mesh.userData.z)));
+        const newLevel = getBlockLightLevel(mesh.userData.x, mesh.userData.y, mesh.userData.z);
         if (!force && mesh.userData.lightTier === newLevel) continue;
         mesh.userData.lightTier = newLevel;
         mesh.material = BLOCK_MATERIALS[mesh.userData.type][newLevel];
@@ -943,7 +951,7 @@ return new THREE.Vector3(.5,30,.5);
 }
 
 // ==========================================================
-// 昼夜
+// 昼夜（★ 关键：调用 lightEngine.setSkyFactor）
 // ==========================================================
 function updateDayNight(dt){
 if(dayNightMode==='cycle')worldTime=(worldTime+dt)%CONST.DAY_DURATION;
@@ -963,6 +971,13 @@ scene.background=skyColor;
 scene.fog.color=skyColor;
 sunSphere.visible=sunHeight>-.1;
 moonSphere.visible=sunHeight<.1;
+
+// ★ 天空光因子：白天 1.0，夜晚 0.28
+const skyFactor = 0.28 + dayness * 0.72;
+if (lightEngine.setSkyFactor && lightEngine.setSkyFactor(skyFactor)) {
+    // 因子有明显变化，标记需要刷新材质
+    needSkyLightRefresh = true;
+}
 }
 
 // ==========================================================
@@ -1123,7 +1138,7 @@ let saveTimer=null;
 function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveToLocal,500)}
 function getSaveData(){
 return{
-version:13,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,
+version:14,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,
 modifications:[...modifications],
 inventory,
 player:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch},
@@ -1182,7 +1197,6 @@ player.vy=0;player.onGround=false;
 rebuildLighting(true);
 updateRender(true);
 updateFlyButtons();
-// ★ 读档后强制刷新所有材质
 refreshAllMeshMaterials(true);
 applyHD();
 return true;
@@ -1276,7 +1290,11 @@ document.getElementById('speedSlider').addEventListener('input',e=>{
 moveSpeed=Number(e.target.value);
 document.getElementById('speedVal').textContent=moveSpeed;
 });
-document.getElementById('dayNightSelect').addEventListener('change',e=>{dayNightMode=e.target.value});
+document.getElementById('dayNightSelect').addEventListener('change',e=>{
+    dayNightMode=e.target.value;
+    // ★ 切换时间模式时立即刷新
+    needSkyLightRefresh=true;
+});
 document.getElementById('weatherSelect').addEventListener('change',e=>{forcedWeather=e.target.value});
 document.getElementById('antialiasToggle').addEventListener('change',e=>{
     hdRendering=e.target.checked;
@@ -1288,7 +1306,6 @@ flyingMode=e.target.checked;
 if(!flyingMode){player.vy=0;unstickPlayer()}
 updateFlyButtons();
 });
-// ★ 修复：切换旁观模式时强制刷新材质
 document.getElementById('spectatorToggle').addEventListener('change',e=>{
 spectatorMode=e.target.checked;
 if(!spectatorMode)unstickPlayer();
@@ -1453,10 +1470,13 @@ rebuildLighting(false);
 updateRender(false);
 }
 
+// ★ 材质刷新：普通每 0.5 秒，天空因子变化时立刻
 materialTimer+=frameTime;
-if(materialTimer>CONST.MATERIAL_UPDATE_INTERVAL){
-materialTimer=0;
-refreshAllMeshMaterials(false);
+if(needSkyLightRefresh || materialTimer>CONST.MATERIAL_UPDATE_INTERVAL){
+    materialTimer=0;
+    const force = needSkyLightRefresh;
+    needSkyLightRefresh = false;
+    refreshAllMeshMaterials(force);
 }
 
 updateSelectionBox();
@@ -1472,7 +1492,7 @@ const mins=Math.floor((dayT-hours)*60);
 const timeStr=`${String(hours).padStart(2,'0')}:${String(mins).padStart(2,'0')}`;
 const mode=spectatorMode?'旁观':(flyingMode?'飞行':'生存');
 const weatherStr=weather.type==='clear'?'晴':{rain:'雨',snow:'雪',sandstorm:'沙尘暴'}[weather.type];
-const playerLight=lightEngine.getLight(Math.floor(player.pos.x),Math.floor(player.pos.y),Math.floor(player.pos.z));
+const playerLight=Math.round(lightEngine.getLight(Math.floor(player.pos.x),Math.floor(player.pos.y),Math.floor(player.pos.z)));
 document.getElementById('hud').innerHTML=
 `FPS: ${Math.round(fpsCount/fpsTimer)} | 光照: ${playerLight}<br>`+
 `位置: ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}<br>`+
