@@ -41,7 +41,7 @@ block worlds, first-person exploration, mining and building, day/night cycles, w
 - Flight mode
 - Spectator mode (X-ray style)
 
-### Lighting
+### Lighting（have serious bugs,we are fixing now.)
 - Minecraft-style voxel lighting system
 - Vertical sky light propagation + horizontal diffusion
 - Torch point light sources
