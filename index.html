@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>MiniCraft</title>
+<title>WebCraft Pre0.46_06a</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user-select:none;user-select:none;touch-action:none;position:fixed;font-family:ui-monospace,Menlo,monospace}
@@ -119,6 +119,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 <div class="setting-row"><label>移动速度</label>
 <input type="range" id="speedSlider" min="3" max="15" value="6" step="0.5">
 <span class="val" id="speedVal">6</span></div>
+<div class="setting-row"><label>抗锯齿</label>
+<input type="checkbox" id="antialiasToggle" checked></div>
 <div class="setting-row"><label>飞行模式</label>
 <input type="checkbox" id="flyToggle"></div>
 <div class="setting-row"><label>旁观模式（透视）</label>
@@ -159,7 +161,7 @@ const RECIPES=[{id:'plank',inputs:{wood:1},outputs:{plank:4},name:'原木 → �
 const CONST={
 GRAVITY:22,JUMP_SPEED:8.5,
 PLAYER_W:.6,PLAYER_H:1.8,EYE_H:1.6,
-SAVE_KEY:'minicraft_v9',
+SAVE_KEY:'minicraft_v11',
 FIXED_DT:1/60,
 LONG_PRESS_MS:450,MOVE_THRESHOLD:25,SWEEP_STEP:.05,
 PITCH_LIMIT:1.45,
@@ -178,6 +180,7 @@ let flyingMode=false;
 let spectatorMode=false;
 let dayNightMode='cycle';
 let forcedWeather='auto';
+let antialiasEnabled=true;
 let worldTime=CONST.DAY_DURATION*0.35;
 let currentBlock='grass';
 let moveInput={x:0,y:0};
@@ -320,17 +323,14 @@ function isSolid(x,y,z){return getBlockType(x,y,z)!==null}
 function setBlock(x,y,z,type){modifications.set(worldKey(x,y,z),type)}
 
 // ==========================================================
-// 光照引擎（防御式加载）
+// 光照引擎
 // ==========================================================
 let lightEngine;
 if (typeof VoxelLight === 'function') {
     lightEngine = new VoxelLight((x, y, z) => getBlockType(x, y, z));
 } else {
     console.warn('VoxelLight 未定义，使用全亮降级模式');
-    lightEngine = {
-        rebuild() {}, onBlockChanged() {}, clear() {},
-        getLight() { return 15; }
-    };
+    lightEngine = { rebuild() {}, onBlockChanged() {}, clear() {}, getLight() { return 12; } };
 }
 let lastLightX = null, lastLightZ = null;
 
@@ -347,12 +347,10 @@ function rebuildLighting(force) {
     lightEngine.rebuild(cx - R, cx + R, cz - R, cz + R, yMax);
 }
 
-const LIGHT_TIERS = [0.28, 0.52, 0.76, 1.0];
-function getLightTier(level) {
-    if (level >= 12) return 3;
-    if (level >= 8) return 2;
-    if (level >= 4) return 1;
-    return 0;
+const LIGHT_LEVELS = 16;
+function levelToBrightness(level) {
+    const l = Math.max(0, Math.min(15, level));
+    return 0.18 + (l / 15) * 0.82;
 }
 
 // ==========================================================
@@ -365,12 +363,12 @@ scene.fog=new THREE.Fog(0x87CEEB,18,45);
 
 const camera=new THREE.PerspectiveCamera(70,1,.1,250);
 const canvasElement=document.getElementById('gameCanvas');
-const renderer=new THREE.WebGLRenderer({canvas:canvasElement,antialias:false,powerPreference:'high-performance'});
-// ★ 不用 tone mapping / sRGB，让 Basic 材质颜色完全原汁原味
+// 始终创建带抗锯齿的 renderer；用 pixelRatio 模拟开关
+const renderer=new THREE.WebGLRenderer({canvas:canvasElement,antialias:true,powerPreference:'high-performance'});
 renderer.shadowMap.enabled=false;
 
 // ==========================================================
-// 材质（★ 关键修复：草方块也改成 Basic）
+// 材质（无黑边）
 // ==========================================================
 function makeTexture(color,opts={}){
 const c=document.createElement('canvas');
@@ -381,17 +379,15 @@ ctx.fillRect(0,0,16,16);
 for(let i=0;i<50;i++){
 const x=(Math.random()*16)|0,y=(Math.random()*16)|0;
 const a=(Math.random()*.3).toFixed(2);
-ctx.fillStyle=Math.random()>.5?`rgba(0,0,0,${a})`:`rgba(255,255,255,${a})`;
+ctx.fillStyle=Math.random()>.5?`rgba(00,0,0,${a})`:`rgba(255,255,255,${a})`;
 ctx.fillRect(x,y,1,1);
 }
 if(opts.sideSplit&&opts.bottomColor){
-ctx.fillStyle=opts.bottomColor;
-ctx.fillRect(0,9,16,7);
-ctx.strokeStyle='rgba(0,0,0,.25)';
-ctx.beginPath();ctx.moveTo(0,9);ctx.lineTo(16,9);ctx.stroke();
+ctx.fill,Style=opts.bottomColor;
+ctx.fill9Rect(,16,7);
+// ★ 移除黑边：不再画 strokeRect 和分界线
 }
-ctx.strokeStyle='rgba(0,0,0,.28)';
-ctx.strokeRect(.5,.5,15,15);
+// ★ 移除外层黑框（原来这里画 strokeRect(.5,.5,15,15)）
 const tex=new THREE.CanvasTexture(c);
 tex.magFilter=THREE.NearestFilter;
 tex.minFilter=THREE.NearestFilter;
@@ -407,7 +403,6 @@ const SPECTATOR_MAT_ARRAY=Array(6).fill(SPECTATOR_MAT);
 const gt=makeTexture(BLOCK_CONFIG.grass.top);
 const gb=makeTexture(BLOCK_CONFIG.grass.bottom);
 const gs=makeTexture(BLOCK_CONFIG.grass.side,{sideSplit:true,bottomColor:BLOCK_CONFIG.grass.bottom});
-// ★ 草方块也改用 Basic，让光照分级明显
 BLOCK_MATERIALS_BASE.grass=[
 new THREE.MeshBasicMaterial({map:gs}),new THREE.MeshBasicMaterial({map:gs}),
 new THREE.MeshBasicMaterial({map:gt}),new THREE.MeshBasicMaterial({map:gb}),
@@ -421,31 +416,43 @@ BLOCK_MATERIALS_BASE[k]=new THREE.MeshBasicMaterial({map:makeTexture(cfg.color)}
 for (const k in BLOCK_MATERIALS_BASE) {
     const src = BLOCK_MATERIALS_BASE[k];
     const isEmissive = k === 'torch';
-    BLOCK_MATERIALS[k] = LIGHT_TIERS.map(b => {
+    BLOCK_MATERIALS[k] = [];
+    for (let level = 0; level < LIGHT_LEVELS; level++) {
+        const b = levelToBrightness(level);
         if (Array.isArray(src)) {
-            return src.map(m => {
+            BLOCK_MATERIALS[k].push(src.map(m => {
                 const c = m.clone();
                 if (!isEmissive) c.color = new THREE.Color(b, b, b);
                 return c;
-            });
+            }));
+        } else {
+            const c = src.clone();
+            if (!isEmissive) c.color = new THREE.Color(b, b, b);
+            BLOCK_MATERIALS[k].push(c);
         }
-        const c = src.clone();
-        if (!isEmissive) c.color = new THREE.Color(b, b, b);
-        return c;
-    });
+    }
 }
 })();
 
 function getMaterialForBlock(type, x, y, z) {
     if (spectatorMode) return SPECTATOR_MAT_ARRAY;
-    const level = lightEngine.getLight(x, y, z);
-    return BLOCK_MATERIALS[type][getLightTier(level)];
+    const level = Math.max(0, Math.min(15, lightEngine.getLight(x, y, z)));
+    return BLOCK_MATERIALS[type][level];
 }
 
 const TORCH_GEOMETRY=new THREE.BoxGeometry(.25,.6,.25);
 
 // ==========================================================
-// 环境光（Basic 材质不吃光，这只是太阳/月亮 sphere 的备用）
+// 选中方块的高亮轮廓
+// ==========================================================
+const selectionGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.002, 1.002, 1.002));
+const selectionMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.85 });
+const selectionBox = new THREE.LineSegments(selectionGeo, selectionMat);
+selectionBox.visible = false;
+scene.add(selectionBox);
+
+// ==========================================================
+// 环境光
 // ==========================================================
 const ambientLight=new THREE.AmbientLight(0xffffff,0.5);
 scene.add(ambientLight);
@@ -474,7 +481,7 @@ const mat=getMaterialForBlock(type,x,y,z);
 mesh=type==='torch'?new THREE.Mesh(TORCH_GEOMETRY,mat):new THREE.Mesh(BLOCK_GEOMETRY,mat);
 mesh.position.set(x+.5,y+(type==='torch'?.3:.5),z+.5);
 }
-mesh.userData={x,y,z,type,lightTier:type==='torch'?-1:getLightTier(lightEngine.getLight(x,y,z))};
+mesh.userData={x,y,z,type,lightTier:type==='torch'?-1:Math.max(0,Math.min(15,lightEngine.getLight(x,y,z)))};
 mesh.matrixAutoUpdate=false;
 mesh.updateMatrix();
 scene.add(mesh);
@@ -503,10 +510,10 @@ function refreshLightingAround(x, y, z) {
         if (cx < minX || cx > maxX) continue;
         if (cz < minZ || cz > maxZ) continue;
         if (spectatorMode) continue;
-        const newTier = getLightTier(lightEngine.getLight(cx, cy, cz));
-        if (mesh.userData.lightTier === newTier) continue;
-        mesh.userData.lightTier = newTier;
-        mesh.material = BLOCK_MATERIALS[mesh.userData.type][newTier];
+        const newLevel = Math.max(0, Math.min(15, lightEngine.getLight(cx, cy, cz)));
+        if (mesh.userData.lightTier === newLevel) continue;
+        mesh.userData.lightTier = newLevel;
+        mesh.material = BLOCK_MATERIALS[mesh.userData.type][newLevel];
     }
 }
 
@@ -514,10 +521,10 @@ function refreshAllMeshMaterials() {
     for (const [k, mesh] of renderedMeshes) {
         if (mesh.userData.type === 'torch') continue;
         if (spectatorMode) { mesh.material = SPECTATOR_MAT_ARRAY; continue; }
-        const newTier = getLightTier(lightEngine.getLight(mesh.userData.x, mesh.userData.y, mesh.userData.z));
-        if (mesh.userData.lightTier === newTier) continue;
-        mesh.userData.lightTier = newTier;
-        mesh.material = BLOCK_MATERIALS[mesh.userData.type][newTier];
+        const newLevel = Math.max(0, Math.min(15, lightEngine.getLight(mesh.userData.x, mesh.userData.y, mesh.userData.z)));
+        if (mesh.userData.lightTier === newLevel) continue;
+        mesh.userData.lightTier = newLevel;
+        mesh.material = BLOCK_MATERIALS[mesh.userData.type][newLevel];
     }
 }
 
@@ -848,6 +855,21 @@ if(hits.length===0)return null;
 const h=hits[0];
 return{block:h.object.userData,normal:h.face.normal.clone()};
 }
+
+// ==========================================================
+// 更新选中轮廓
+// ==========================================================
+function updateSelectionBox(){
+    if(spectatorMode){ selectionBox.visible=false; return; }
+    const hit=raycast();
+    if(hit){
+        selectionBox.position.set(hit.block.x+0.5,hit.block.y+0.5,hit.block.z+0.5);
+        selectionBox.visible=true;
+    }else{
+        selectionBox.visible=false;
+    }
+}
+
 function toast(msg){
 const el=document.getElementById('toast');
 el.textContent=msg;el.classList.add('show');
@@ -879,8 +901,9 @@ const n=hit.normal;
 const tx=x+n.x,ty=y+n.y,tz=z+n.z;
 if(isSolid(tx,ty,tz))return;
 const pMinX=player.pos.x-CONST.PLAYER_W/2,pMaxX=player.pos.x+CONST.PLAYER_W/2;
-const pMinY=player.pos.y,pMaxY=player.pos.y+CONST.PLAYER_H;
-const pMinZ=player.pos.z-CONST.PLAYER_W/2,pMaxZ=player.pos.z+CONST.PLAYER_W/2;
+const pMinY=player.pos.y,pMaxY=player.pos.y+CON{
+ST.PLAYER_H;
+const pMinZ=player.pos.zversion-CONST.PLAYER_W/2,pMax:Z=player.pos.z+CON11ST.PLAYER_W/2;
 if(pMaxX>tx&&pMinX<tx+1&&pMaxY>ty&&pMinY<ty+1&&pMaxZ>tz&&pMinZ<tz+1)return;
 setBlock(tx,ty,tz,currentBlock);
 addMeshAt(tx,ty,tz,currentBlock);
@@ -1085,18 +1108,30 @@ moveInput.y=ky/maxDist;
 function joyEnd(){moveInput={x:0,y:0};knob.style.transform='translate(0,0)'}
 
 // ==========================================================
+// 抗锯齿开关：用 pixelRatio 模拟
+// ==========================================================
+function applyAntialias(){
+    // 开启：最多 2x 超采样
+    // 关闭：1.0 原生分辨率
+    const maxDpr = antialiasEnabled ? Math.min(window.devicePixelRatio, 2) : 1;
+    renderer.setPixelRatio(maxDpr);
+    const w=document.documentElement.clientWidth||window.innerWidth;
+    const h=document.documentElement.clientHeight||window.innerHeight;
+    renderer.setSize(w,h,false);
+}
+
+// ==========================================================
 // 存档
 // ==========================================================
 let saveTimer=null;
 function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveToLocal,500)}
 function getSaveData(){
-return{
-version:9,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,
+return,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,
 modifications:[...modifications],
 inventory,
 player:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch},
 currentBlock,
-settings:{renderDistance,brightnessLevel,moveSpeed,flyingMode,spectatorMode}
+settings:{renderDistance,brightnessLevel,moveSpeed,flyingMode,spectatorMode,antialiasEnabled}
 };
 }
 function saveToLocal(){
@@ -1140,6 +1175,7 @@ if(Number.isFinite(data.settings.brightnessLevel)){brightnessLevel=Math.max(30,M
 if(Number.isFinite(data.settings.moveSpeed)){moveSpeed=Math.max(3,Math.min(15,data.settings.moveSpeed));document.getElementById('speedSlider').value=moveSpeed;document.getElementById('speedVal').textContent=moveSpeed}
 if(typeof data.settings.flyingMode==='boolean'){flyingMode=data.settings.flyingMode;document.getElementById('flyToggle').checked=flyingMode}
 if(typeof data.settings.spectatorMode==='boolean'){spectatorMode=data.settings.spectatorMode;document.getElementById('spectatorToggle').checked=spectatorMode}
+if(typeof data.settings.antialiasEnabled==='boolean'){antialiasEnabled=data.settings.antialiasEnabled;document.getElementById('antialiasToggle').checked=antialiasEnabled;applyAntialias()}
 }
 heightCache.clear();
 caveEntranceCache.clear();
@@ -1241,6 +1277,11 @@ document.getElementById('speedVal').textContent=moveSpeed;
 });
 document.getElementById('dayNightSelect').addEventListener('change',e=>{dayNightMode=e.target.value});
 document.getElementById('weatherSelect').addEventListener('change',e=>{forcedWeather=e.target.value});
+document.getElementById('antialiasToggle').addEventListener('change',e=>{
+    antialiasEnabled=e.target.checked;
+    applyAntialias();
+    scheduleSave();
+});
 document.getElementById('flyToggle').addEventListener('change',e=>{
 flyingMode=e.target.checked;
 if(!flyingMode){player.vy=0;unstickPlayer()}
@@ -1366,7 +1407,7 @@ activeTouches.delete(t.identifier);
 function resizeRenderer(){
 const w=document.documentElement.clientWidth||window.innerWidth;
 const h=document.documentElement.clientHeight||window.innerHeight;
-renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.5));
+// pixelRatio 由 applyAntialias 统一处理
 renderer.setSize(w,h,false);
 canvasElement.style.width=w+'px';
 canvasElement.style.height=h+'px';
@@ -1374,7 +1415,7 @@ camera.aspect=w/h;
 camera.updateProjectionMatrix();
 }
 let lastTime=performance.now(),accumulator=0;
-let fpsTimer=0,fpsCount=0,renderTimer=0,hudTimer=0,resizeTimer=0,materialTimer=0;
+let fpsTimer=0,fpsCount=0,renderTimer=0,hudTimer=0,resizeTimer=0,materialTimer=0,selectionTimer=0;
 
 function update(){
 const now=performance.now();
@@ -1417,6 +1458,9 @@ materialTimer=0;
 refreshAllMeshMaterials();
 }
 
+// 每帧更新选中轮廓
+updateSelectionBox();
+
 updateCamera();
 renderer.render(scene,camera);
 
@@ -1455,7 +1499,9 @@ worldTime=CONST.DAY_DURATION*.35;
 document.getElementById('worldTypeSelect').value=worldType;
 document.getElementById('dayNightSelect').value=dayNightMode;
 document.getElementById('weatherSelect').value=forcedWeather;
+document.getElementById('antialiasToggle').checked=antialiasEnabled;
 resizeRenderer();
+applyAntialias();
 rebuildLighting(true);
 updateRender(true);
 updateFlyButtons();
