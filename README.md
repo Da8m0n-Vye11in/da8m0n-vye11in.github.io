@@ -1,5 +1,7 @@
 #  WebCraft
 
+English version: [README_EN.md](README_EN.md)
+
 一个实验性的、将 Minecraft 复刻到网页上的开源项目。
 
 > ⚠️ **早期测试阶段**
@@ -63,7 +65,6 @@
 ### 在线游玩
 访问 GitHub Pages：https://da8m0n-vye11in.github.io
 
-
 ### 本地运行
 克隆仓库后，用任意 HTTP 服务器托管根目录（不要用 `file://` 直接打开）：
 
@@ -91,5 +92,4 @@ python3 -m http.server 8000
 - 本项目与 Mojang / Microsoft 无任何官方关联。
 - 所有代码均为学习研究用途。
 - 使用的贴图均为程序化生成的像素噪点，不涉及官方素材。 
-
 
