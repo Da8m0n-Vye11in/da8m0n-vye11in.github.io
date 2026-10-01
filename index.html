@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>WebCraft Pre0.47_02d</title>
+<title>MiniCraft</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user-select:none;user-select:none;touch-action:none;position:fixed;font-family:ui-monospace,Menlo,monospace}
@@ -161,7 +161,7 @@ const RECIPES=[{id:'plank',inputs:{wood:1},outputs:{plank:4},name:'原木 → �
 const CONST={
 GRAVITY:22,JUMP_SPEED:8.5,
 PLAYER_W:.6,PLAYER_H:1.8,EYE_H:1.6,
-SAVE_KEY:'minicraft_v12',
+SAVE_KEY:'minicraft_v13',
 FIXED_DT:1/60,
 LONG_PRESS_MS:450,MOVE_THRESHOLD:25,SWEEP_STEP:.05,
 PITCH_LIMIT:1.45,
@@ -180,7 +180,6 @@ let flyingMode=false;
 let spectatorMode=false;
 let dayNightMode='cycle';
 let forcedWeather='auto';
-// ★ 默认关闭高清渲染
 let hdRendering=false;
 let worldTime=CONST.DAY_DURATION*0.35;
 let currentBlock='grass';
@@ -330,7 +329,6 @@ let lightEngine;
 if (typeof VoxelLight === 'function') {
     lightEngine = new VoxelLight((x, y, z) => getBlockType(x, y, z));
 } else {
-    console.warn('VoxelLight 未定义，使用全亮降级模式');
     lightEngine = { rebuild() {}, onBlockChanged() {}, clear() {}, getLight() { return 12; } };
 }
 let lastLightX = null, lastLightZ = null;
@@ -364,12 +362,11 @@ scene.fog=new THREE.Fog(0x87CEEB,18,45);
 
 const camera=new THREE.PerspectiveCamera(70,1,.1,250);
 const canvasElement=document.getElementById('gameCanvas');
-// ★ 关键修复：antialias:false，不用 MSAA
 const renderer=new THREE.WebGLRenderer({canvas:canvasElement,antialias:false,powerPreference:'high-performance'});
 renderer.shadowMap.enabled=false;
 
 // ==========================================================
-// 材质（无黑边）
+// 材质
 // ==========================================================
 function makeTexture(color,opts={}){
 const c=document.createElement('canvas');
@@ -442,7 +439,7 @@ function getMaterialForBlock(type, x, y, z) {
 const TORCH_GEOMETRY=new THREE.BoxGeometry(.25,.6,.25);
 
 // ==========================================================
-// 选中方块的高亮轮廓
+// 选中轮廓
 // ==========================================================
 const selectionGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.002, 1.002, 1.002));
 const selectionMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.85 });
@@ -516,12 +513,16 @@ function refreshLightingAround(x, y, z) {
     }
 }
 
-function refreshAllMeshMaterials() {
+// ★ 修复：新增 force 参数
+function refreshAllMeshMaterials(force) {
     for (const [k, mesh] of renderedMeshes) {
         if (mesh.userData.type === 'torch') continue;
-        if (spectatorMode) { mesh.material = SPECTATOR_MAT_ARRAY; continue; }
+        if (spectatorMode) {
+            if (mesh.material !== SPECTATOR_MAT_ARRAY) mesh.material = SPECTATOR_MAT_ARRAY;
+            continue;
+        }
         const newLevel = Math.max(0, Math.min(15, lightEngine.getLight(mesh.userData.x, mesh.userData.y, mesh.userData.z)));
-        if (mesh.userData.lightTier === newLevel) continue;
+        if (!force && mesh.userData.lightTier === newLevel) continue;
         mesh.userData.lightTier = newLevel;
         mesh.material = BLOCK_MATERIALS[mesh.userData.type][newLevel];
     }
@@ -1106,7 +1107,6 @@ function joyEnd(){moveInput={x:0,y:0};knob.style.transform='translate(0,0)'}
 // 高清渲染开关
 // ==========================================================
 function applyHD(){
-    // 关闭：1.0 原生；开启：min(dpr, 1.5)
     const maxDpr = hdRendering ? Math.min(window.devicePixelRatio, 1.5) : 1;
     renderer.setPixelRatio(maxDpr);
     const w=document.documentElement.clientWidth||window.innerWidth;
@@ -1123,7 +1123,7 @@ let saveTimer=null;
 function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveToLocal,500)}
 function getSaveData(){
 return{
-version:12,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,
+version:13,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,
 modifications:[...modifications],
 inventory,
 player:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch},
@@ -1182,6 +1182,8 @@ player.vy=0;player.onGround=false;
 rebuildLighting(true);
 updateRender(true);
 updateFlyButtons();
+// ★ 读档后强制刷新所有材质
+refreshAllMeshMaterials(true);
 applyHD();
 return true;
 }
@@ -1239,6 +1241,7 @@ player.pitch=-.3;
 player.vy=0;player.onGround=false;
 rebuildLighting(true);
 updateRender(true);
+refreshAllMeshMaterials(true);
 toast('新世界已生成');
 }
 document.getElementById('settingsBtn').addEventListener('click',e=>{e.preventDefault();openSettings()});
@@ -1263,7 +1266,7 @@ renderDistance=Number(e.target.value);
 document.getElementById('renderDistVal').textContent=renderDistance;
 rebuildLighting(true);
 updateRender(true);
-refreshAllMeshMaterials();
+refreshAllMeshMaterials(true);
 });
 document.getElementById('brightnessSlider').addEventListener('input',e=>{
 brightnessLevel=Number(e.target.value);
@@ -1285,11 +1288,12 @@ flyingMode=e.target.checked;
 if(!flyingMode){player.vy=0;unstickPlayer()}
 updateFlyButtons();
 });
+// ★ 修复：切换旁观模式时强制刷新材质
 document.getElementById('spectatorToggle').addEventListener('change',e=>{
 spectatorMode=e.target.checked;
 if(!spectatorMode)unstickPlayer();
 updateFlyButtons();
-refreshAllMeshMaterials();
+refreshAllMeshMaterials(true);
 });
 
 // ==========================================================
@@ -1452,7 +1456,7 @@ updateRender(false);
 materialTimer+=frameTime;
 if(materialTimer>CONST.MATERIAL_UPDATE_INTERVAL){
 materialTimer=0;
-refreshAllMeshMaterials();
+refreshAllMeshMaterials(false);
 }
 
 updateSelectionBox();
