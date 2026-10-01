@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>WebCraft Pre0.46_06a</title>
+<title>WebCraft Pre0.47_02d</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user-select:none;user-select:none;touch-action:none;position:fixed;font-family:ui-monospace,Menlo,monospace}
@@ -119,8 +119,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 <div class="setting-row"><label>移动速度</label>
 <input type="range" id="speedSlider" min="3" max="15" value="6" step="0.5">
 <span class="val" id="speedVal">6</span></div>
-<div class="setting-row"><label>抗锯齿</label>
-<input type="checkbox" id="antialiasToggle" checked></div>
+<div class="setting-row"><label>高清渲染（更清晰更卡）</label>
+<input type="checkbox" id="antialiasToggle"></div>
 <div class="setting-row"><label>飞行模式</label>
 <input type="checkbox" id="flyToggle"></div>
 <div class="setting-row"><label>旁观模式（透视）</label>
@@ -161,7 +161,7 @@ const RECIPES=[{id:'plank',inputs:{wood:1},outputs:{plank:4},name:'原木 → �
 const CONST={
 GRAVITY:22,JUMP_SPEED:8.5,
 PLAYER_W:.6,PLAYER_H:1.8,EYE_H:1.6,
-SAVE_KEY:'minicraft_v11',
+SAVE_KEY:'minicraft_v12',
 FIXED_DT:1/60,
 LONG_PRESS_MS:450,MOVE_THRESHOLD:25,SWEEP_STEP:.05,
 PITCH_LIMIT:1.45,
@@ -180,7 +180,8 @@ let flyingMode=false;
 let spectatorMode=false;
 let dayNightMode='cycle';
 let forcedWeather='auto';
-let antialiasEnabled=true;
+// ★ 默认关闭高清渲染
+let hdRendering=false;
 let worldTime=CONST.DAY_DURATION*0.35;
 let currentBlock='grass';
 let moveInput={x:0,y:0};
@@ -363,8 +364,8 @@ scene.fog=new THREE.Fog(0x87CEEB,18,45);
 
 const camera=new THREE.PerspectiveCamera(70,1,.1,250);
 const canvasElement=document.getElementById('gameCanvas');
-// 始终创建带抗锯齿的 renderer；用 pixelRatio 模拟开关
-const renderer=new THREE.WebGLRenderer({canvas:canvasElement,antialias:true,powerPreference:'high-performance'});
+// ★ 关键修复：antialias:false，不用 MSAA
+const renderer=new THREE.WebGLRenderer({canvas:canvasElement,antialias:false,powerPreference:'high-performance'});
 renderer.shadowMap.enabled=false;
 
 // ==========================================================
@@ -379,15 +380,13 @@ ctx.fillRect(0,0,16,16);
 for(let i=0;i<50;i++){
 const x=(Math.random()*16)|0,y=(Math.random()*16)|0;
 const a=(Math.random()*.3).toFixed(2);
-ctx.fillStyle=Math.random()>.5?`rgba(00,0,0,${a})`:`rgba(255,255,255,${a})`;
+ctx.fillStyle=Math.random()>.5?`rgba(0,0,0,${a})`:`rgba(255,255,255,${a})`;
 ctx.fillRect(x,y,1,1);
 }
 if(opts.sideSplit&&opts.bottomColor){
-ctx.fill,Style=opts.bottomColor;
-ctx.fill9Rect(,16,7);
-// ★ 移除黑边：不再画 strokeRect 和分界线
+ctx.fillStyle=opts.bottomColor;
+ctx.fillRect(0,9,16,7);
 }
-// ★ 移除外层黑框（原来这里画 strokeRect(.5,.5,15,15)）
 const tex=new THREE.CanvasTexture(c);
 tex.magFilter=THREE.NearestFilter;
 tex.minFilter=THREE.NearestFilter;
@@ -856,9 +855,6 @@ const h=hits[0];
 return{block:h.object.userData,normal:h.face.normal.clone()};
 }
 
-// ==========================================================
-// 更新选中轮廓
-// ==========================================================
 function updateSelectionBox(){
     if(spectatorMode){ selectionBox.visible=false; return; }
     const hit=raycast();
@@ -901,9 +897,8 @@ const n=hit.normal;
 const tx=x+n.x,ty=y+n.y,tz=z+n.z;
 if(isSolid(tx,ty,tz))return;
 const pMinX=player.pos.x-CONST.PLAYER_W/2,pMaxX=player.pos.x+CONST.PLAYER_W/2;
-const pMinY=player.pos.y,pMaxY=player.pos.y+CON{
-ST.PLAYER_H;
-const pMinZ=player.pos.zversion-CONST.PLAYER_W/2,pMax:Z=player.pos.z+CON11ST.PLAYER_W/2;
+const pMinY=player.pos.y,pMaxY=player.pos.y+CONST.PLAYER_H;
+const pMinZ=player.pos.z-CONST.PLAYER_W/2,pMaxZ=player.pos.z+CONST.PLAYER_W/2;
 if(pMaxX>tx&&pMinX<tx+1&&pMaxY>ty&&pMinY<ty+1&&pMaxZ>tz&&pMinZ<tz+1)return;
 setBlock(tx,ty,tz,currentBlock);
 addMeshAt(tx,ty,tz,currentBlock);
@@ -1108,16 +1103,17 @@ moveInput.y=ky/maxDist;
 function joyEnd(){moveInput={x:0,y:0};knob.style.transform='translate(0,0)'}
 
 // ==========================================================
-// 抗锯齿开关：用 pixelRatio 模拟
+// 高清渲染开关
 // ==========================================================
-function applyAntialias(){
-    // 开启：最多 2x 超采样
-    // 关闭：1.0 原生分辨率
-    const maxDpr = antialiasEnabled ? Math.min(window.devicePixelRatio, 2) : 1;
+function applyHD(){
+    // 关闭：1.0 原生；开启：min(dpr, 1.5)
+    const maxDpr = hdRendering ? Math.min(window.devicePixelRatio, 1.5) : 1;
     renderer.setPixelRatio(maxDpr);
     const w=document.documentElement.clientWidth||window.innerWidth;
     const h=document.documentElement.clientHeight||window.innerHeight;
     renderer.setSize(w,h,false);
+    camera.aspect=w/h;
+    camera.updateProjectionMatrix();
 }
 
 // ==========================================================
@@ -1126,12 +1122,13 @@ function applyAntialias(){
 let saveTimer=null;
 function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveToLocal,500)}
 function getSaveData(){
-return,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,
+return{
+version:12,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,
 modifications:[...modifications],
 inventory,
 player:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch},
 currentBlock,
-settings:{renderDistance,brightnessLevel,moveSpeed,flyingMode,spectatorMode,antialiasEnabled}
+settings:{renderDistance,brightnessLevel,moveSpeed,flyingMode,spectatorMode,hdRendering}
 };
 }
 function saveToLocal(){
@@ -1175,7 +1172,7 @@ if(Number.isFinite(data.settings.brightnessLevel)){brightnessLevel=Math.max(30,M
 if(Number.isFinite(data.settings.moveSpeed)){moveSpeed=Math.max(3,Math.min(15,data.settings.moveSpeed));document.getElementById('speedSlider').value=moveSpeed;document.getElementById('speedVal').textContent=moveSpeed}
 if(typeof data.settings.flyingMode==='boolean'){flyingMode=data.settings.flyingMode;document.getElementById('flyToggle').checked=flyingMode}
 if(typeof data.settings.spectatorMode==='boolean'){spectatorMode=data.settings.spectatorMode;document.getElementById('spectatorToggle').checked=spectatorMode}
-if(typeof data.settings.antialiasEnabled==='boolean'){antialiasEnabled=data.settings.antialiasEnabled;document.getElementById('antialiasToggle').checked=antialiasEnabled;applyAntialias()}
+if(typeof data.settings.hdRendering==='boolean'){hdRendering=data.settings.hdRendering;document.getElementById('antialiasToggle').checked=hdRendering}
 }
 heightCache.clear();
 caveEntranceCache.clear();
@@ -1185,6 +1182,7 @@ player.vy=0;player.onGround=false;
 rebuildLighting(true);
 updateRender(true);
 updateFlyButtons();
+applyHD();
 return true;
 }
 function loadFromLocal(){
@@ -1278,8 +1276,8 @@ document.getElementById('speedVal').textContent=moveSpeed;
 document.getElementById('dayNightSelect').addEventListener('change',e=>{dayNightMode=e.target.value});
 document.getElementById('weatherSelect').addEventListener('change',e=>{forcedWeather=e.target.value});
 document.getElementById('antialiasToggle').addEventListener('change',e=>{
-    antialiasEnabled=e.target.checked;
-    applyAntialias();
+    hdRendering=e.target.checked;
+    applyHD();
     scheduleSave();
 });
 document.getElementById('flyToggle').addEventListener('change',e=>{
@@ -1407,7 +1405,6 @@ activeTouches.delete(t.identifier);
 function resizeRenderer(){
 const w=document.documentElement.clientWidth||window.innerWidth;
 const h=document.documentElement.clientHeight||window.innerHeight;
-// pixelRatio 由 applyAntialias 统一处理
 renderer.setSize(w,h,false);
 canvasElement.style.width=w+'px';
 canvasElement.style.height=h+'px';
@@ -1415,7 +1412,7 @@ camera.aspect=w/h;
 camera.updateProjectionMatrix();
 }
 let lastTime=performance.now(),accumulator=0;
-let fpsTimer=0,fpsCount=0,renderTimer=0,hudTimer=0,resizeTimer=0,materialTimer=0,selectionTimer=0;
+let fpsTimer=0,fpsCount=0,renderTimer=0,hudTimer=0,resizeTimer=0,materialTimer=0;
 
 function update(){
 const now=performance.now();
@@ -1458,7 +1455,6 @@ materialTimer=0;
 refreshAllMeshMaterials();
 }
 
-// 每帧更新选中轮廓
 updateSelectionBox();
 
 updateCamera();
@@ -1499,9 +1495,9 @@ worldTime=CONST.DAY_DURATION*.35;
 document.getElementById('worldTypeSelect').value=worldType;
 document.getElementById('dayNightSelect').value=dayNightMode;
 document.getElementById('weatherSelect').value=forcedWeather;
-document.getElementById('antialiasToggle').checked=antialiasEnabled;
+document.getElementById('antialiasToggle').checked=hdRendering;
 resizeRenderer();
-applyAntialias();
+applyHD();
 rebuildLighting(true);
 updateRender(true);
 updateFlyButtons();
