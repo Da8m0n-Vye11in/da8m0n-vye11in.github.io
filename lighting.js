@@ -1,9 +1,11 @@
 // ==========================================================
-// lighting.js v3 — Minecraft 体素光照引擎
-// 修复：暴露方块本身应得到天空光 15，而不是 0
+// lighting.js v5 — 支持昼夜天空光因子
 // ==========================================================
 (function (global) {
     'use strict';
+
+    const MAX_SKY_LIGHT = 12;
+    const MAX_BLOCK_LIGHT = 15;
 
     const DIRS = new Int8Array([
         1, 0, 0, -1, 0, 0,
@@ -22,6 +24,16 @@
             this.sizeX = 0;
             this.sizeZ = 0;
             this.sizeY = 0;
+            // ★ 昼夜天空光因子：白天 1.0，夜晚 0.28
+            this.skyFactor = 1.0;
+        }
+
+        // ★ 设置天空光因子，返回是否变化
+        setSkyFactor(f) {
+            const nf = Math.max(0.05, Math.min(1.0, f));
+            if (Math.abs(nf - this.skyFactor) < 0.005) return false;
+            this.skyFactor = nf;
+            return true;
         }
 
         _ensureSize(x0, x1, z0, z1, yMax) {
@@ -57,9 +69,6 @@
             return this.getBlockType(x, y, z) !== null;
         }
 
-        // ==========================================================
-        // 全量重建
-        // ==========================================================
         rebuild(x0, x1, z0, z1, yMax) {
             this._ensureSize(x0, x1, z0, z1, yMax);
             this.skylight.fill(0);
@@ -68,27 +77,23 @@
             const skyQ = [];
             const blockQ = [];
 
-            // ★ 关键修复：方块本身也接收天空光
             for (let x = x0; x <= x1; x++) {
                 for (let z = z0; z <= z1; z++) {
-                    let level = 15;
+                    let level = MAX_SKY_LIGHT;
                     for (let y = this.yMax; y >= 0; y--) {
                         const t = this.getBlockType(x, y, z);
                         const idx = this._idx(x, y, z);
 
-                        // 这一格（无论方块还是空气）都接收当前 level
                         if (level > 0) {
                             this.skylight[idx] = level;
                             skyQ.push(x, y, z, level);
                         }
 
-                        // 火把光源
                         if (t === 'torch') {
-                            this.blocklight[idx] = 14;
-                            blockQ.push(x, y, z, 14);
+                            this.blocklight[idx] = MAX_BLOCK_LIGHT;
+                            blockQ.push(x, y, z, MAX_BLOCK_LIGHT);
                         }
 
-                        // 遇到方块后，下方变暗
                         if (t !== null) level = 0;
                     }
                 }
@@ -98,9 +103,6 @@
             this._flood(blockQ, this.blocklight);
         }
 
-        // ==========================================================
-        // 局部更新（方块变化后 ±8 格）
-        // ==========================================================
         onBlockChanged(x, y, z) {
             if (!this.skylight) return;
             const R = 8;
@@ -110,7 +112,6 @@
             const z1 = Math.min(this.maxZ, z + R);
             if (x0 > x1 || z0 > z1) return;
 
-            // 清理区域
             for (let cx = x0; cx <= x1; cx++) {
                 for (let cz = z0; cz <= z1; cz++) {
                     const base = ((cx - this.minX) * this.sizeY) * this.sizeZ + (cz - this.minZ);
@@ -125,7 +126,6 @@
             const skyQ = [];
             const blockQ = [];
 
-            // 边界光照作为种子
             for (let cx = x0 - 1; cx <= x1 + 1; cx++) {
                 for (let cz = z0 - 1; cz <= z1 + 1; cz++) {
                     const inside = cx >= x0 && cx <= x1 && cz >= z0 && cz <= z1;
@@ -141,10 +141,9 @@
                 }
             }
 
-            // 重算内部：★ 同样修复——方块本身接收天空光
             for (let cx = x0; cx <= x1; cx++) {
                 for (let cz = z0; cz <= z1; cz++) {
-                    let level = 15;
+                    let level = MAX_SKY_LIGHT;
                     for (let cy = this.yMax; cy >= 0; cy--) {
                         const t = this.getBlockType(cx, cy, cz);
                         const idx = this._idx(cx, cy, cz);
@@ -155,8 +154,8 @@
                         }
 
                         if (t === 'torch') {
-                            this.blocklight[idx] = 14;
-                            blockQ.push(cx, cy, cz, 14);
+                            this.blocklight[idx] = MAX_BLOCK_LIGHT;
+                            blockQ.push(cx, cy, cz, MAX_BLOCK_LIGHT);
                         }
 
                         if (t !== null) level = 0;
@@ -168,9 +167,6 @@
             this._flood(blockQ, this.blocklight);
         }
 
-        // ==========================================================
-        // BFS 洪水填充
-        // ==========================================================
         _flood(queue, map) {
             let i = 0;
             while (i < queue.length) {
@@ -189,7 +185,6 @@
                     if (!this._inBounds(nx, ny, nz)) continue;
 
                     const idx = this._idx(nx, ny, nz);
-                    // ★ 允许光照扩散到方块本身（让方块也能被相邻光照亮）
                     if (map[idx] < nl) {
                         map[idx] = nl;
                         queue.push(nx, ny, nz, nl);
@@ -198,15 +193,23 @@
             }
         }
 
-        // ==========================================================
-        // 查询
-        // ==========================================================
+        // ★ getSkyLight 应用 skyFactor，返回 0-15 浮点
+        getSkyLight(x, y, z) {
+            if (!this.skylight) return MAX_SKY_LIGHT * this.skyFactor;
+            if (!this._inBounds(x, y, z)) return MAX_SKY_LIGHT * this.skyFactor;
+            return this.skylight[this._idx(x, y, z)] * this.skyFactor;
+        }
+
+        getBlockLight(x, y, z) {
+            if (!this.blocklight) return 0;
+            if (!this._inBounds(x, y, z)) return 0;
+            return this.blocklight[this._idx(x, y, z)];
+        }
+
+        // 综合光照 = max(天空光 * skyFactor, 火把光)
         getLight(x, y, z) {
-            if (!this.skylight) return 15;
-            if (!this._inBounds(x, y, z)) return 15;
-            const i = this._idx(x, y, z);
-            const sky = this.skylight[i];
-            const blk = this.blocklight[i];
+            const sky = this.getSkyLight(x, y, z);
+            const blk = this.getBlockLight(x, y, z);
             return sky > blk ? sky : blk;
         }
 
