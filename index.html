@@ -161,7 +161,7 @@ const RECIPES=[{id:'plank',inputs:{wood:1},outputs:{plank:4},name:'原木 → �
 const CONST={
 GRAVITY:22,JUMP_SPEED:8.5,
 PLAYER_W:.6,PLAYER_H:1.8,EYE_H:1.6,
-SAVE_KEY:'minicraft_v16',
+SAVE_KEY:'minicraft_v17',
 FIXED_DT:1/60,
 LONG_PRESS_MS:450,MOVE_THRESHOLD:25,SWEEP_STEP:.05,
 PITCH_LIMIT:1.45,
@@ -245,17 +245,17 @@ return h;
 }
 
 // ==========================================================
-// 洞穴（★ 阈值降低，洞穴更多）
+// 洞穴
 // ==========================================================
 function isCave(x,y,z){
 if(y<2)return false;
 const surface=getHeight(x,z);
 if(y>surface-2)return false;
 const n=noise3(x*.06,y*.06,z*.06,WORLD_SEED+100);
-if(n>.58)return true;   // ★ 从 0.62 降到 0.58
+if(n>.58)return true;
 const n1=noise3(x*.05,y*.05,z*.05,WORLD_SEED+200);
 const n2=noise3(x*.05,y*.05,z*.05,WORLD_SEED+300);
-if(Math.abs(n1-.5)<.06&&Math.abs(n2-.5)<.06)return true;  // ★ 从 .05 提到 .06
+if(Math.abs(n1-.5)<.06&&Math.abs(n2-.5)<.06)return true;
 return false;
 }
 const caveEntranceCache=new Map();
@@ -399,7 +399,8 @@ return tex;
 const BLOCK_GEOMETRY=new THREE.BoxGeometry(1,1,1);
 const BLOCK_MATERIALS_BASE={};
 const BLOCK_MATERIALS={};
-// ★ 旁观模式材质：28% 透明的原材质
+// ★ 火把自发光材质（不受光照影响）
+const TORCH_EMISSIVE_MAT = new THREE.MeshBasicMaterial({ color: 0xffcc33 });
 const SPECTATOR_MATERIALS={};
 
 (function buildMaterials(){
@@ -419,22 +420,27 @@ BLOCK_MATERIALS_BASE[k]=new THREE.MeshBasicMaterial({map:makeTexture(cfg.color)}
 for (const k in BLOCK_MATERIALS_BASE) {
     const src = BLOCK_MATERIALS_BASE[k];
     const isEmissive = k === 'torch';
-    BLOCK_MATERIALS[k] = [];
-    for (let level = 0; level < LIGHT_LEVELS; level++) {
-        const b = levelToBrightness(level);
-        if (Array.isArray(src)) {
-            BLOCK_MATERIALS[k].push(src.map(m => {
-                const c = m.clone();
-                if (!isEmissive) c.color = new THREE.Color(b, b, b);
-                return c;
-            }));
-        } else {
-            const c = src.clone();
-            if (!isEmissive) c.color = new THREE.Color(b, b, b);
-            BLOCK_MATERIALS[k].push(c);
+    // ★ 火把不吃光照
+    if (isEmissive) {
+        BLOCK_MATERIALS[k] = Array(LIGHT_LEVELS).fill(TORCH_EMISSIVE_MAT);
+    } else {
+        BLOCK_MATERIALS[k] = [];
+        for (let level = 0; level < LIGHT_LEVELS; level++) {
+            const b = levelToBrightness(level);
+            if (Array.isArray(src)) {
+                BLOCK_MATERIALS[k].push(src.map(m => {
+                    const c = m.clone();
+                    c.color = new THREE.Color(b, b, b);
+                    return c;
+                }));
+            } else {
+                const c = src.clone();
+                c.color = new THREE.Color(b, b, b);
+                BLOCK_MATERIALS[k].push(c);
+            }
         }
     }
-    // ★ 创建旁观材质（28% 透明）
+    // 旁观材质
     if (Array.isArray(src)) {
         SPECTATOR_MATERIALS[k] = src.map(m => {
             const c = m.clone();
@@ -473,13 +479,10 @@ selectionBox.visible = false;
 scene.add(selectionBox);
 
 // ==========================================================
-// 环境光
+// 光照（仅太阳和月亮 sphere，无 PointLight）
 // ==========================================================
 const ambientLight=new THREE.AmbientLight(0xffffff,0.5);
 scene.add(ambientLight);
-const sunLight=new THREE.DirectionalLight(0xffffff,0.1);
-sunLight.position.set(30,50,30);
-scene.add(sunLight);
 const sunSphere=new THREE.Mesh(new THREE.SphereGeometry(4,8,8),new THREE.MeshBasicMaterial({color:0xffdd44,fog:false}));
 scene.add(sunSphere);
 const moonSphere=new THREE.Mesh(new THREE.SphereGeometry(3,8,8),new THREE.MeshBasicMaterial({color:0xeeeeff,fog:false}));
@@ -510,13 +513,14 @@ if(m){scene.remove(m);renderedMeshes.delete(k)}
 }
 
 function refreshAfterBlockChange(x, y, z) {
+    // ★ 光照引擎局部更新（火把 BFS 会正确绕过方块）
     lightEngine.onBlockChanged(x, y, z);
     refreshLightingAround(x, y, z);
 }
 
 function refreshLightingAround(x, y, z) {
     if(spectatorMode) return;
-    const R = 14;
+    const R = 16;  // 覆盖火把光照范围（15）
     const minX = x - R, maxX = x + R;
     const minZ = z - R, maxZ = z + R;
     for (const [k, mesh] of renderedMeshes) {
@@ -561,7 +565,6 @@ const needed=new Set();
 const R=renderDistance;
 
 if(spectatorMode){
-    // ★ 旁观模式：渲染所有固体方块（半透明）
     const yMin=Math.max(1,cy-20);
     const yMax=Math.min(cy+20,Math.max(40,cy+8));
     for(let dx=-R;dx<=R;dx++){
@@ -827,14 +830,12 @@ player.pos.x=t.x;player.pos.y=t.y;player.pos.z=t.z;
 }
 return false;
 }
-// ★ 增强 unstick：向上推最多 30 格，失败则重生
 function unstickPlayer(){
     if(!isColliding(player.pos))return;
     for(let dy=0.2;dy<30;dy+=0.2){
         const t={x:player.pos.x,y:player.pos.y+dy,z:player.pos.z};
         if(!isColliding(t)){player.pos.y=t.y;player.vy=0;player.onGround=false;return}
     }
-    // 找不到空位？重生
     player.pos = randomSpawn();
     player.vy = 0;
     player.onGround = false;
@@ -1017,7 +1018,6 @@ const camX=player.pos.x,camY=player.pos.y,camZ=player.pos.z;
 const sunX=Math.cos(angle)*100,sunY=Math.sin(angle)*100;
 sunSphere.position.set(camX+sunX,camY+sunY,camZ);
 moonSphere.position.set(camX-sunX,camY-sunY,camZ);
-sunLight.position.set(camX+sunX,camY+sunY,camZ+20);
 const sunHeight=Math.sin(angle);
 const dayness=Math.max(0,sunHeight);
 const skyColor=SKY_NIGHT.clone().lerp(SKY_DAY,dayness);
@@ -1187,7 +1187,7 @@ let saveTimer=null;
 function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveToLocal,500)}
 function getSaveData(){
 return{
-version:16,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,
+version:17,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,
 modifications:[...modifications],
 inventory,
 player:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch},
@@ -1348,7 +1348,6 @@ flyingMode=e.target.checked;
 if(!flyingMode){player.vy=0;unstickPlayer()}
 updateFlyButtons();
 });
-// ★ 切换旁观模式：重建所有网格
 document.getElementById('spectatorToggle').addEventListener('change',e=>{
     spectatorMode=e.target.checked;
     updateFlyButtons();
