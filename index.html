@@ -123,7 +123,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 <input type="checkbox" id="antialiasToggle"></div>
 <div class="setting-row"><label>飞行模式</label>
 <input type="checkbox" id="flyToggle"></div>
-<div class="setting-row"><label>旁观模式（透视洞穴）</label>
+<div class="setting-row"><label>旁观模式（X光透视）</label>
 <input type="checkbox" id="spectatorToggle"></div>
 <button class="panel-btn" id="closeSettings">关闭</button>
 <button class="panel-btn danger" id="applyWorldBtn">应用世界类型（会重置世界）</button>
@@ -161,7 +161,7 @@ const RECIPES=[{id:'plank',inputs:{wood:1},outputs:{plank:4},name:'原木 → �
 const CONST={
 GRAVITY:22,JUMP_SPEED:8.5,
 PLAYER_W:.6,PLAYER_H:1.8,EYE_H:1.6,
-SAVE_KEY:'minicraft_v15',
+SAVE_KEY:'minicraft_v16',
 FIXED_DT:1/60,
 LONG_PRESS_MS:450,MOVE_THRESHOLD:25,SWEEP_STEP:.05,
 PITCH_LIMIT:1.45,
@@ -245,17 +245,17 @@ return h;
 }
 
 // ==========================================================
-// 洞穴
+// 洞穴（★ 阈值降低，洞穴更多）
 // ==========================================================
 function isCave(x,y,z){
 if(y<2)return false;
 const surface=getHeight(x,z);
 if(y>surface-2)return false;
 const n=noise3(x*.06,y*.06,z*.06,WORLD_SEED+100);
-if(n>.62)return true;
+if(n>.58)return true;   // ★ 从 0.62 降到 0.58
 const n1=noise3(x*.05,y*.05,z*.05,WORLD_SEED+200);
 const n2=noise3(x*.05,y*.05,z*.05,WORLD_SEED+300);
-if(Math.abs(n1-.5)<.05&&Math.abs(n2-.5)<.05)return true;
+if(Math.abs(n1-.5)<.06&&Math.abs(n2-.5)<.06)return true;  // ★ 从 .05 提到 .06
 return false;
 }
 const caveEntranceCache=new Map();
@@ -314,7 +314,6 @@ return'stone';
 }
 const modifications=new Map();
 const worldKey=(x,y,z)=>x+','+y+','+z;
-const airKey=(x,y,z)=>'A'+x+','+y+','+z;
 function getBlockType(x,y,z){
 const k=worldKey(x,y,z);
 if(modifications.has(k))return modifications.get(k);
@@ -400,22 +399,8 @@ return tex;
 const BLOCK_GEOMETRY=new THREE.BoxGeometry(1,1,1);
 const BLOCK_MATERIALS_BASE={};
 const BLOCK_MATERIALS={};
-
-// ★ 洞穴可视化材质：蓝色半透明
-const CAVE_AIR_MAT = new THREE.MeshBasicMaterial({
-    color: 0x33aaff,
-    transparent: true,
-    opacity: 0.45,
-    depthWrite: false,
-    side: THREE.DoubleSide
-});
-// ★ 洞穴边缘线框
-const CAVE_EDGE_MAT = new THREE.LineBasicMaterial({
-    color: 0x66ddff,
-    transparent: true,
-    opacity: 0.7
-});
-const CAVE_EDGE_GEO = new THREE.EdgesGeometry(BLOCK_GEOMETRY);
+// ★ 旁观模式材质：28% 透明的原材质
+const SPECTATOR_MATERIALS={};
 
 (function buildMaterials(){
 const gt=makeTexture(BLOCK_CONFIG.grass.top);
@@ -449,10 +434,29 @@ for (const k in BLOCK_MATERIALS_BASE) {
             BLOCK_MATERIALS[k].push(c);
         }
     }
+    // ★ 创建旁观材质（28% 透明）
+    if (Array.isArray(src)) {
+        SPECTATOR_MATERIALS[k] = src.map(m => {
+            const c = m.clone();
+            c.transparent = true;
+            c.opacity = 0.28;
+            c.depthWrite = false;
+            c.side = THREE.DoubleSide;
+            return c;
+        });
+    } else {
+        const c = src.clone();
+        c.transparent = true;
+        c.opacity = 0.28;
+        c.depthWrite = false;
+        c.side = THREE.DoubleSide;
+        SPECTATOR_MATERIALS[k] = c;
+    }
 }
 })();
 
 function getMaterialForBlock(type, x, y, z) {
+    if (spectatorMode) return SPECTATOR_MATERIALS[type];
     const level = getBlockLightLevel(x, y, z);
     return BLOCK_MATERIALS[type][level];
 }
@@ -499,25 +503,6 @@ function addMeshAt(x,y,z,type){
     scene.add(mesh);
     renderedMeshes.set(k,mesh);
 }
-
-// ★ 洞穴空气可视化
-function addCaveAirMesh(x,y,z){
-    const k=airKey(x,y,z);
-    if(renderedMeshes.has(k))return;
-    const group = new THREE.Group();
-    const box = new THREE.Mesh(BLOCK_GEOMETRY, CAVE_AIR_MAT);
-    box.position.set(x+.5, y+.5, z+.5);
-    group.add(box);
-    const edges = new THREE.LineSegments(CAVE_EDGE_GEO, CAVE_EDGE_MAT);
-    edges.position.set(x+.5, y+.5, z+.5);
-    group.add(edges);
-    group.userData={x,y,z,type:'__air'};
-    group.matrixAutoUpdate=false;
-    group.updateMatrix();
-    scene.add(group);
-    renderedMeshes.set(k,group);
-}
-
 function removeMeshAt(x,y,z){
 const k=worldKey(x,y,z);
 const m=renderedMeshes.get(k);
@@ -530,18 +515,17 @@ function refreshAfterBlockChange(x, y, z) {
 }
 
 function refreshLightingAround(x, y, z) {
+    if(spectatorMode) return;
     const R = 14;
     const minX = x - R, maxX = x + R;
     const minZ = z - R, maxZ = z + R;
     for (const [k, mesh] of renderedMeshes) {
-        if (mesh.userData.type === '__air') continue;
         if (mesh.userData.type === 'torch') continue;
         const cx = mesh.userData.x;
         const cy = mesh.userData.y;
         const cz = mesh.userData.z;
         if (cx < minX || cx > maxX) continue;
         if (cz < minZ || cz > maxZ) continue;
-        if (spectatorMode) continue;
         const newLevel = getBlockLightLevel(cx, cy, cz);
         if (mesh.userData.lightTier === newLevel) continue;
         mesh.userData.lightTier = newLevel;
@@ -551,9 +535,12 @@ function refreshLightingAround(x, y, z) {
 
 function refreshAllMeshMaterials(force) {
     for (const [k, mesh] of renderedMeshes) {
-        if (mesh.userData.type === '__air') continue;
         if (mesh.userData.type === 'torch') continue;
-        if (spectatorMode) continue;
+        if (spectatorMode) {
+            const newMat = SPECTATOR_MATERIALS[mesh.userData.type];
+            if (mesh.material !== newMat) mesh.material = newMat;
+            continue;
+        }
         const newLevel = getBlockLightLevel(mesh.userData.x, mesh.userData.y, mesh.userData.z);
         if (!force && mesh.userData.lightTier === newLevel) continue;
         mesh.userData.lightTier = newLevel;
@@ -574,36 +561,33 @@ const needed=new Set();
 const R=renderDistance;
 
 if(spectatorMode){
-    // ★ 旁观模式：只渲染"洞穴空气"（被 ≥3 个固体包围的空气格）
-    const yTop = Math.min(getHeight(cx,cz)+4, cy+16);
-    const yBot = Math.max(1, cy-16);
+    // ★ 旁观模式：渲染所有固体方块（半透明）
+    const yMin=Math.max(1,cy-20);
+    const yMax=Math.min(cy+20,Math.max(40,cy+8));
     for(let dx=-R;dx<=R;dx++){
         for(let dz=-R;dz<=R;dz++){
-            const x=cx+dx, z=cz+dz;
-            const surface = getHeight(x, z);
-            const localTop = Math.min(surface - 1, yTop);
-            const localBot = Math.min(yBot, surface - 2);
-            for(let y = localBot; y <= localTop; y++){
-                if(y < 1) continue;
-                if(getBlockType(x,y,z) !== null) continue;  // 有方块跳过
-                // 检查固体邻居数量
-                let solidCount = 0;
-                if(isSolid(x+1,y,z)) solidCount++;
-                if(isSolid(x-1,y,z)) solidCount++;
-                if(isSolid(x,y+1,z)) solidCount++;
-                if(isSolid(x,y-1,z)) solidCount++;
-                if(isSolid(x,y,z+1)) solidCount++;
-                if(isSolid(x,y,z-1)) solidCount++;
-                if(solidCount >= 3){
-                    const k = airKey(x,y,z);
+            const x=cx+dx,z=cz+dz;
+            const h=getHeight(x,z);
+            const topY=Math.min(h+6,yMax);
+            for(let y=topY;y>=yMin;y--){
+                const type=getBlockType(x,y,z);
+                if(type!==null){
+                    const k=worldKey(x,y,z);
                     needed.add(k);
-                    if(!renderedMeshes.has(k)) addCaveAirMesh(x,y,z);
+                    if(!renderedMeshes.has(k))addMeshAt(x,y,z,type);
                 }
             }
         }
     }
-    // 卸载不需要的
-    for(const k of [...renderedMeshes.keys()]){
+    for(const[k,type]of modifications){
+        if(type===null)continue;
+        const[x,y,z]=k.split(',').map(Number);
+        if(Math.abs(x-cx)<=R&&Math.abs(z-cz)<=R){
+            needed.add(k);
+            if(!renderedMeshes.has(k))addMeshAt(x,y,z,type);
+        }
+    }
+    for(const k of[...renderedMeshes.keys()]){
         if(!needed.has(k)){
             scene.remove(renderedMeshes.get(k));
             renderedMeshes.delete(k);
@@ -843,12 +827,17 @@ player.pos.x=t.x;player.pos.y=t.y;player.pos.z=t.z;
 }
 return false;
 }
+// ★ 增强 unstick：向上推最多 30 格，失败则重生
 function unstickPlayer(){
-if(!isColliding(player.pos))return;
-for(let dy=0;dy<10;dy+=.1){
-const t={x:player.pos.x,y:player.pos.y+dy,z:player.pos.z};
-if(!isColliding(t)){player.pos.y+=dy;player.vy=0;return}
-}
+    if(!isColliding(player.pos))return;
+    for(let dy=0.2;dy<30;dy+=0.2){
+        const t={x:player.pos.x,y:player.pos.y+dy,z:player.pos.z};
+        if(!isColliding(t)){player.pos.y=t.y;player.vy=0;player.onGround=false;return}
+    }
+    // 找不到空位？重生
+    player.pos = randomSpawn();
+    player.vy = 0;
+    player.onGround = false;
 }
 function physicsStep(dt){
 const forward=new THREE.Vector3(-Math.sin(player.yaw),0,-Math.cos(player.yaw));
@@ -932,7 +921,7 @@ return{block:h.object.userData,normal:h.face.normal.clone()};
 function updateSelectionBox(){
     if(spectatorMode){ selectionBox.visible=false; return; }
     const hit=raycast();
-    if(hit && hit.block.type !== '__air'){
+    if(hit){
         selectionBox.position.set(hit.block.x+0.5,hit.block.y+0.5,hit.block.z+0.5);
         selectionBox.visible=true;
     }else{
@@ -965,7 +954,6 @@ function tryPlace(){
 if(spectatorMode)return;
 const hit=raycast();
 if(!hit)return;
-if(hit.block.type==='__air')return;
 if((inventory[currentBlock]||0)<=0)return toast('没有 '+BLOCK_CONFIG[currentBlock].name);
 const{x,y,z}=hit.block;
 const n=hit.normal;
@@ -987,7 +975,6 @@ function tryBreak(){
 if(spectatorMode)return;
 const hit=raycast();
 if(!hit)return;
-if(hit.block.type==='__air')return;
 const{x,y,z}=hit.block;
 if(y===0)return toast('基岩无法破坏');
 const type=getBlockType(x,y,z);
@@ -1200,7 +1187,7 @@ let saveTimer=null;
 function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveToLocal,500)}
 function getSaveData(){
 return{
-version:15,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,
+version:16,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,
 modifications:[...modifications],
 inventory,
 player:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch},
@@ -1361,12 +1348,12 @@ flyingMode=e.target.checked;
 if(!flyingMode){player.vy=0;unstickPlayer()}
 updateFlyButtons();
 });
-// ★ 切换旁观模式：清空并重建
+// ★ 切换旁观模式：重建所有网格
 document.getElementById('spectatorToggle').addEventListener('change',e=>{
     spectatorMode=e.target.checked;
-    if(!spectatorMode)unstickPlayer();
     updateFlyButtons();
     clearAllWorldMeshes();
+    if(!spectatorMode) unstickPlayer();
     updateRender(true);
 });
 
@@ -1527,12 +1514,16 @@ rebuildLighting(false);
 updateRender(false);
 }
 
-materialTimer+=frameTime;
-if(needSkyLightRefresh || materialTimer>CONST.MATERIAL_UPDATE_INTERVAL){
-    materialTimer=0;
-    const force = needSkyLightRefresh;
+if(!spectatorMode){
+    materialTimer+=frameTime;
+    if(needSkyLightRefresh || materialTimer>CONST.MATERIAL_UPDATE_INTERVAL){
+        materialTimer=0;
+        const force = needSkyLightRefresh;
+        needSkyLightRefresh = false;
+        refreshAllMeshMaterials(force);
+    }
+} else {
     needSkyLightRefresh = false;
-    refreshAllMeshMaterials(force);
 }
 
 updateSelectionBox();
