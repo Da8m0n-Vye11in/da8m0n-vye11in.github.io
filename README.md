@@ -1,4 +1,4 @@
-#  WebCraft
+#   Tessera
 
 English version: [README_EN.md](README_EN.md)
 
@@ -41,7 +41,7 @@ English version: [README_EN.md](README_EN.md)
 - 飞行模式
 - 旁观模式（X 光透视）
 
-### 光照(存在严重问题，正在修复）
+### 光照
 - Minecraft 风格体素光照系统
 - 天空光垂直传播 + 水平扩散
 - 火把点光源
@@ -75,6 +75,7 @@ python3 -m http.server 8000
 .
 ├── index.html      # 主页面 + 游戏逻辑
 └── lighting.js     # 体素光照引擎
+└── lang.js         #多语言实现
 ```
 
 # 操作方式
