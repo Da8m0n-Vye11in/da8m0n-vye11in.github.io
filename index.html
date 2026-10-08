@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Tessera</title>
+<title>Tessera Pre 0.65_06x</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user-select:none;user-select:none;touch-action:none;position:fixed;font-family:ui-monospace,Menlo,monospace}
@@ -20,10 +20,11 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 #menuBtn3{width:50px;height:50px;border-radius:6px;background:rgba(0,0,0,.6);border:2px solid rgba(255,255,255,.35);color:#fff;font-size:22px;text-align:center;line-height:46px;cursor:pointer;pointer-events:auto}
 #menuBtn3:active{background:rgba(80,80,80,.85)}
 #hotbar{display:flex;gap:3px;padding:4px;background:rgba(0,0,0,.55);border:2px solid rgba(255,255,255,.35);border-radius:4px}
-.hotbar-slot{width:46px;height:46px;border-radius:2px;background:rgba(80,80,80,.6);border:2px solid rgba(255,255,255,.2);position:relative}
+.hotbar-slot{width:42px;height:42px;border-radius:2px;background:rgba(80,80,80,.6);border:2px solid rgba(255,255,255,.2);position:relative}
 .hotbar-slot.selected{border:3px solid #fff;box-shadow:0 0 8px rgba(255,255,255,.8)}
 .hotbar-slot.empty{opacity:.3}
 .hotbar-count{position:absolute;bottom:1px;right:3px;font-size:11px;color:#fff;text-shadow:1px 1px 2px #000;font-weight:bold}
+.hotbar-num{position:absolute;top:1px;left:3px;font-size:9px;color:rgba(255,255,255,.6)}
 #joystick{position:fixed;left:30px;bottom:100px;width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.22);z-index:100;pointer-events:none}
 #joystick-knob{position:absolute;left:45px;top:45px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.95)}
 #jumpBtn{position:fixed;right:30px;bottom:130px;width:84px;height:84px;border-radius:50%;background:rgba(80,180,100,.85);border:3px solid rgba(255,255,255,.5);color:#fff;font-size:20px;font-weight:bold;text-align:center;line-height:78px;z-index:100;pointer-events:none;user-select:none}
@@ -45,7 +46,6 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 .panel-btn:active{background:rgba(100,140,200,.9)}
 .panel-btn.danger{background:rgba(180,80,80,.9)}
 #inventoryPanel{width:92vw;max-width:420px}
-/* ★ 布局：背包左 / 合成右 */
 #invLayout{display:flex;gap:14px;align-items:flex-start;justify-content:center;margin-bottom:10px}
 #invSection{display:flex;flex-direction:column;align-items:center;gap:6px}
 #invGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:6px;background:rgba(20,20,30,.6);border:2px solid rgba(255,255,255,.25);border-radius:6px}
@@ -71,7 +71,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 <canvas id="gameCanvas"></canvas>
 <div id="sandstormOverlay"></div>
 <div id="crosshair"></div>
-<div id="hud">Loading...</div>
+<div id="hud">Tessera Pre 0.65_06x</div>
 <div id="topBar"><div class="mc-btn" id="pauseBtn">⏸</div></div>
 <div id="hotbarWrapper"><div id="menuBtn3">⋯</div><div id="hotbar"></div></div>
 <div id="joystick"><div id="joystick-knob"></div></div>
@@ -127,11 +127,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 <div class="panel" id="inventoryPanel">
 <h3 id="invTitle"></h3>
 <div id="invLayout">
-<!-- ★ 左边：背包 -->
-<div id="invSection">
-<div id="invGrid"></div>
-</div>
-<!-- ★ 右边：合成 -->
+<div id="invSection"><div id="invGrid"></div></div>
 <div id="craftArea">
 <div id="craftRow">
 <div id="craftGrid">
@@ -157,6 +153,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 // ==========================================================
 // 配置
 // ==========================================================
+const VERSION = 'Pre 0.65_06x';
 const BLOCK_CONFIG={
 grass:{nameKey:'grass',top:'#7ec850',side:'#8fb860',bottom:'#8b5a2b'},
 dirt:{nameKey:'dirt',color:'#8b5a2b'},
@@ -165,15 +162,16 @@ wood:{nameKey:'wood',color:'#6b4423'},
 plank:{nameKey:'plank',color:'#b88a4a'},
 leaves:{nameKey:'leaves',color:'#3d7a1e'},
 sand:{nameKey:'sandBlock',color:'#d4c694',gravity:true},
+brick:{nameKey:'brick',color:'#a04030'},
 torch:{nameKey:'torch',color:'#ffcc33',light:true,emissive:true}
 };
-const HOTBAR_ORDER=['grass','dirt','stone','wood','plank','leaves','sand','torch'];
+const HOTBAR_ORDER=['grass','dirt','stone','wood','plank','leaves','sand','brick','torch'];
 const RECIPES=[{ inputs: {wood: 1}, outputs: {plank: 4} }];
 
 const CONST={
 GRAVITY:22,JUMP_SPEED:8.5,
 PLAYER_W:.6,PLAYER_H:1.8,EYE_H:1.6,
-SAVE_KEY:'tessera_v1',
+SAVE_KEY:'tessera_v3',
 FIXED_DT:1/60,
 LONG_PRESS_MS:350,MOVE_THRESHOLD:25,SWEEP_STEP:.05,
 BREAK_INTERVAL_MS: 320,
@@ -203,7 +201,7 @@ let gamePaused=false;
 let isBreaking=false;
 let lastBreakTime=0;
 const player={pos:new THREE.Vector3(0,50,0),yaw:0,pitch:-.3,vy:0,onGround:false};
-const inventory={grass:64,dirt:64,stone:64,wood:32,plank:32,leaves:32,sand:32,torch:32};
+const inventory={grass:64,dirt:64,stone:64,wood:32,plank:32,leaves:32,sand:32,brick:32,torch:32};
 const craftSlots = [null, null, null, null];
 let craftOutput = null;
 function t(k){ return MC_LANG.t(k); }
@@ -674,20 +672,40 @@ const wOpts=document.getElementById('weatherSelect').options;
 wOpts[0].textContent=t('auto');wOpts[1].textContent=t('clear');wOpts[2].textContent=t('rain');wOpts[3].textContent=t('snow');wOpts[4].textContent=t('sandstorm');
 }
 
+// 热栏（9 格）
 const hotbar=document.getElementById('hotbar');const hotbarSlots=[];
 function buildHotbar(){
 hotbar.innerHTML='';hotbarSlots.length=0;
-for(const k of HOTBAR_ORDER){const slot=document.createElement('div');
+for(let i=0;i<HOTBAR_ORDER.length;i++){
+const k=HOTBAR_ORDER[i];
+const slot=document.createElement('div');
 slot.className='hotbar-slot';slot.dataset.type=k;
 slot.style.background=BLOCK_CONFIG[k].color||BLOCK_CONFIG[k].top;
+// 数字角标
+const num=document.createElement('div');num.className='hotbar-num';num.textContent=(i+1);
+slot.appendChild(num);
 const count=document.createElement('div');count.className='hotbar-count';count.textContent=inventory[k]||0;
-slot.appendChild(count);hotbar.appendChild(slot);hotbarSlots.push(slot);}
+slot.appendChild(count);
+hotbar.appendChild(slot);hotbarSlots.push(slot);
+}
 updateHotbarSelection();updateHotbarCounts();
 }
 function updateHotbarSelection(){hotbarSlots.forEach((s,i)=>s.classList.toggle('selected',HOTBAR_ORDER[i]===currentBlock))}
 function updateHotbarCounts(){hotbarSlots.forEach((s,i)=>{
 const k=HOTBAR_ORDER[i];const c=inventory[k]||0;
 s.querySelector('.hotbar-count').textContent=c;s.classList.toggle('empty',c===0);})}
+
+// ★ 数字键 1-9 切换热栏
+document.addEventListener('keydown', e => {
+    if (e.key >= '1' && e.key <= '9') {
+        const idx = parseInt(e.key) - 1;
+        if (idx < HOTBAR_ORDER.length) {
+            currentBlock = HOTBAR_ORDER[idx];
+            updateHotbarSelection();
+        }
+    }
+});
+
 function pointInCircle(x,y,r){const cx=r.left+r.width/2,cy=r.top+r.height/2;return Math.hypot(x-cx,y-cy)<=Math.min(r.width,r.height)/2}
 function pointInRect(x,y,r){return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom}
 function isInPanel(x,y){for(const id of['pausePanel','settingsPanel','inventoryPanel']){const el=document.getElementById(id);if(el.classList.contains('show')&&pointInRect(x,y,el.getBoundingClientRect()))return true;}return false;}
@@ -699,7 +717,6 @@ function openPause(){closeAllPanels();gamePaused=true;document.getElementById('p
 function openSettings(){document.getElementById('settingsPanel').classList.add('show')}
 function closeSettings(){document.getElementById('settingsPanel').classList.remove('show');gamePaused=false}
 
-// 背包 + 合成
 function openInventory(){
 document.getElementById('pausePanel').classList.remove('show');
 document.getElementById('pauseOverlay').classList.remove('show');
@@ -821,10 +838,9 @@ const w=document.documentElement.clientWidth||window.innerWidth;
 const h=document.documentElement.clientHeight||window.innerHeight;
 renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
 
-// 存档
 let saveTimer=null;
 function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveToLocal,500)}
-function getSaveData(){return{version:1,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,modifications:[...modifications],inventory,player:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch},currentBlock,lang:MC_LANG.get(),settings:{renderDistance,brightnessLevel,moveSpeed,flyingMode,spectatorMode,hdRendering}};}
+function getSaveData(){return{version:3,versionStr:VERSION,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,modifications:[...modifications],inventory,player:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch},currentBlock,lang:MC_LANG.get(),settings:{renderDistance,brightnessLevel,moveSpeed,flyingMode,spectatorMode,hdRendering}};}
 function saveToLocal(){try{localStorage.setItem(CONST.SAVE_KEY,JSON.stringify(getSaveData()))}catch(e){}}
 function applySaveData(data){
 if(!data||typeof data!=='object')return false;
@@ -890,7 +906,7 @@ modifications.clear();clearAllWorldMeshes();clearAllDrops();
 for(const k in inventory)delete inventory[k];
 inventory.grass=64;inventory.dirt=64;inventory.stone=64;
 inventory.wood=32;inventory.plank=32;inventory.leaves=32;
-inventory.sand=32;inventory.torch=32;
+inventory.sand=32;inventory.brick=32;inventory.torch=32;
 for(let i=0;i<4;i++)craftSlots[i]=null;
 craftOutput=null;
 updateHotbarCounts();
@@ -900,7 +916,6 @@ updateRender(true);
 toast(t('newWorldGenerated'));
 }
 
-// 事件
 document.getElementById('pauseBtn').addEventListener('click',e=>{e.preventDefault();openPause()});
 document.getElementById('resumeBtn').addEventListener('click',e=>{e.preventDefault();closeAllPanels()});
 document.getElementById('pauseSettingsBtn').addEventListener('click',e=>{e.preventDefault();openSettings()});
@@ -922,7 +937,6 @@ document.getElementById('antialiasToggle').addEventListener('change',e=>{hdRende
 document.getElementById('flyToggle').addEventListener('change',e=>{flyingMode=e.target.checked;if(!flyingMode){player.vy=0;unstickPlayer()}updateFlyButtons()});
 document.getElementById('spectatorToggle').addEventListener('change',e=>{spectatorMode=e.target.checked;updateFlyButtons();clearAllWorldMeshes();if(!spectatorMode)unstickPlayer();updateRender(true);});
 
-// 触摸
 const activeTouches=new Map();
 document.addEventListener('touchstart',e=>{
 for(const tg of e.changedTouches)if(isInPanel(tg.clientX,tg.clientY))return;
@@ -1026,7 +1040,6 @@ activeTouches.delete(tg.identifier);
 }
 });
 
-// 主循环
 function resizeRenderer(){
 const w=document.documentElement.clientWidth||window.innerWidth;
 const h=document.documentElement.clientHeight||window.innerHeight;
@@ -1085,7 +1098,9 @@ const timeStr=`${String(hours).padStart(2,'0')}:${String(mins).padStart(2,'0')}`
 const mode=spectatorMode?'S':(flyingMode?'F':'');
 const weatherStr=t(weather.type);
 const playerLight=Math.round(lightEngine.getLight(Math.floor(player.pos.x),Math.floor(player.pos.y),Math.floor(player.pos.z)));
-document.getElementById('hud').innerHTML=`FPS: ${Math.round(fpsCount/fpsTimer)} | Light: ${playerLight}<br>`+
+document.getElementById('hud').innerHTML=
+`<b>Tessera ${VERSION}</b><br>`+
+`FPS: ${Math.round(fpsCount/fpsTimer)} | Light: ${playerLight}<br>`+
 `Pos: ${player.pos.x.toFixed(1)}, ${player.pos.y.toFixed(1)}, ${player.pos.z.toFixed(1)}<br>`+
 `Biome: ${getBiome(Math.floor(player.pos.x),Math.floor(player.pos.z))}<br>`+
 `Time: ${timeStr} | ${weatherStr} | ${mode}<br>`+
