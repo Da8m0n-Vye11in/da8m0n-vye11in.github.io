@@ -21,7 +21,7 @@
             grass: '草方块', dirt: '泥土', stone: '石头', wood: '原木',
             plank: '木板', leaves: '树叶', sandBlock: '沙子', torch: '火把',
             craftPlank: '原木 → 木板×4', material: '材料',
-            noBlock: '没有方块', cantBreak: '不能破坏'
+            noBlock: '没有方块', cantBreak: '不能破坏',brick: '砖块'
         },
         zh_tw: {
             pause: '暫停', resume: '繼續遊戲', settings: '設定', save: '儲存存檔', load: '讀取存檔',
@@ -39,7 +39,7 @@
             grass: '草地', dirt: '泥土', stone: '石頭', wood: '原木',
             plank: '木板', leaves: '樹葉', sandBlock: '沙子', torch: '火把',
             craftPlank: '原木 → 木板×4', material: '材料',
-            noBlock: '沒有方塊', cantBreak: '不能破壞'
+            noBlock: '沒有方塊', cantBreak: '不能破壞',brick: '磚塊',
         },
         en: {
             pause: 'Paused', resume: 'Resume', settings: 'Settings', save: 'Save', load: 'Load',
@@ -57,7 +57,7 @@
             grass: 'Grass', dirt: 'Dirt', stone: 'Stone', wood: 'Wood',
             plank: 'Plank', leaves: 'Leaves', sandBlock: 'Sand', torch: 'Torch',
             craftPlank: 'Wood → Plank ×4', material: 'Material',
-            noBlock: 'No block', cantBreak: 'Cannot break'
+            noBlock: 'No block', cantBreak: 'Cannot break',brick: 'Brick'
         },
         es: {
             pause: 'Pausa', resume: 'Reanudar', settings: 'Ajustes', save: 'Guardar', load: 'Cargar',
@@ -75,7 +75,9 @@
             grass: 'Césped', dirt: 'Tierra', stone: 'Piedra', wood: 'Madera',
             plank: 'Tabla', leaves: 'Hojas', sandBlock: 'Arena', torch: 'Antorcha',
             craftPlank: 'Madera → Tabla ×4', material: 'Material',
-            noBlock: 'Sin bloque', cantBreak: 'No se puede romper'
+            noBlock: 'Sin bloque', cantBreak: 'No se puede romper',brick: 'Ladrillo'
+
+
         },
         ru: {
             pause: 'Пауза', resume: 'Продолжить', settings: 'Настройки', save: 'Сохранить', load: 'Загрузить',
@@ -93,7 +95,7 @@
             grass: 'Трава', dirt: 'Земля', stone: 'Камень', wood: 'Бревно',
             plank: 'Доска', leaves: 'Листья', sandBlock: 'Песок', torch: 'Факел',
             craftPlank: 'Бревно → Доска ×4', material: 'Материал',
-            noBlock: 'Нет блока', cantBreak: 'Нельзя сломать'
+            noBlock: 'Нет блока', cantBreak: 'Нельзя сломать' ,brick: 'Кирпич',
         }
     };
 
