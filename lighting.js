@@ -106,9 +106,10 @@
             this._flood(blockQ, this.blocklight);
         }
 
+        // ★ 性能优化：局部更新半径从 16 调回 12（平衡性能与光照接缝）
         onBlockChanged(x, y, z) {
             if (!this.skylight) return;
-            const R = 6;
+            const R = 12; 
             const x0 = Math.max(this.minX, x - R);
             const x1 = Math.min(this.maxX, x + R);
             const z0 = Math.max(this.minZ, z - R);
