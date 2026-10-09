@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Tessera Pre 0.65_06x (Chunked Lite)</title>
+<title>Tessera Pre 0.65_06x (Chunked Optimized)</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user-select:none;user-select:none;touch-action:none;position:fixed;font-family:ui-monospace,Menlo,monospace}
@@ -184,7 +184,7 @@ if (typeof VoxelLight !== 'function') {
 // ==========================================================
 // 配置与常量（深度恢复版）
 // ==========================================================
-const VERSION = 'Pre 0.65_06x (Chunked Lite)';
+const VERSION = 'Pre 0.65_06x (Chunked Optimized)';
 const CHUNK_SIZE = 8;      
 const CHUNK_HEIGHT = 8;    
 const MIN_Y = -64;
@@ -231,6 +231,8 @@ let worldTime=CONST.DAY_DURATION*0.35;
 let currentBlock='grass';
 let moveInput={x:0,y:0};
 let jumpRequested=false,moveUpRequested=false,moveDownRequested=false;
+let isJumping=false; // ★ 新增：长按跳跃状态
+let lastJumpTime=0;  // ★ 新增：跳跃冷却，防止火箭
 let needSkyLightRefresh=false;
 let gamePaused=false;
 let isBreaking=false;
@@ -240,6 +242,11 @@ const inventory={grass:64,dirt:64,stone:64,wood:32,plank:32,leaves:32,sand:32,br
 const craftSlots = [null, null, null, null];
 let craftOutput = null;
 function t(k){ return MC_LANG.t(k); }
+
+// ★ 物理引擎用的临时向量，避免频繁 new 导致 GC 卡顿
+const _physForward = new THREE.Vector3();
+const _physRight = new THREE.Vector3();
+const _physMove = new THREE.Vector3();
 
 // 音效引擎
 let audioCtx = null;
@@ -352,7 +359,7 @@ if(y===surface)return biome==='desert'?'sand':'grass';
 if(y>surface)return null;
 const depth=surface-y;
 if(depth<=3)return biome==='desert'?'sand':'dirt';
-return 'stone'; // 无限向下都是石头
+return 'stone';
 }
 
 // 区块系统
@@ -405,9 +412,9 @@ function rebuildLighting(force){
         if(!force && lastLightX!==null && Math.abs(cx-lastLightX)<CONST.LIGHT_REBUILD_DIST && Math.abs(cz-lastLightZ)<CONST.LIGHT_REBUILD_DIST && Math.abs(cy-lastLightY)<12)return;
         lastLightX=cx; lastLightY=cy; lastLightZ=cz;
         
-        const R = 3;
-        const yMin = Math.max(MIN_Y, cy - 16); // 向下 16 格光照
-        const yMax = Math.min(MAX_Y, cy + 16);
+        const R = renderDistance * CHUNK_SIZE + 8; 
+        const yMin = Math.max(MIN_Y, cy - 24);
+        const yMax = Math.min(MAX_Y, cy + 24);
         lightEngine.rebuild(cx-R, cx+R, cz-R, cz+R, yMin, yMax);
     } catch(e) { console.error("光照重建失败:", e); }
 }
@@ -480,15 +487,25 @@ function buildChunk(cx, cy, cz) {
     const startY = cy * CHUNK_HEIGHT;
     const startZ = cz * CHUNK_SIZE;
 
+    // ★ 性能优化：使用局部缓存，避免反复计算噪声和 Map 查找
+    const localCache = new Map();
+    const getCachedBlock = (x, y, z) => {
+        const k = x + ',' + y + ',' + z;
+        if (localCache.has(k)) return localCache.get(k);
+        const t = getBlockType(x, y, z);
+        localCache.set(k, t);
+        return t;
+    };
+
     for (let x = startX; x < startX + CHUNK_SIZE; x++) {
         for (let y = startY; y < startY + CHUNK_HEIGHT; y++) {
             for (let z = startZ; z < startZ + CHUNK_SIZE; z++) {
-                const type = getBlockType(x, y, z);
+                const type = getCachedBlock(x, y, z);
                 if (type !== null) {
                     let exposed = false;
-                    if (getBlockType(x+1,y,z)===null || getBlockType(x-1,y,z)===null ||
-                        getBlockType(x,y+1,z)===null || getBlockType(x,y-1,z)===null ||
-                        getBlockType(x,y,z+1)===null || getBlockType(x,y,z-1)===null) {
+                    if (getCachedBlock(x+1,y,z)===null || getCachedBlock(x-1,y,z)===null ||
+                        getCachedBlock(x,y+1,z)===null || getCachedBlock(x,y-1,z)===null ||
+                        getCachedBlock(x,y,z+1)===null || getCachedBlock(x,y,z-1)===null) {
                         exposed = true;
                     }
                     if (!exposed) continue;
@@ -523,7 +540,6 @@ function unloadChunk(cx, cy, cz) {
     }
 }
 
-// ★ 核心修复：大幅增加垂直向下加载深度
 function updateRender(force) {
     const cx = Math.floor(player.pos.x), cy = Math.floor(player.pos.y), cz = Math.floor(player.pos.z);
     const [pcx, pcy, pcz] = worldToChunk(cx, cy, cz);
@@ -532,8 +548,8 @@ function updateRender(force) {
     lastChunkCx = pcx; lastChunkCy = pcy; lastChunkCz = pcz;
 
     const renderDist = renderDistance;
-    const vertDistUp = 1;   // 向上只加载 1 层（天空层）
-    const vertDistDown = 5; // ★ 向下加载 5 层（40 格深度！）
+    const vertDistUp = 1;   
+    const vertDistDown = 5; 
 
     chunkLoadQueue.length = 0;
     chunkUnloadQueue.length = 0;
@@ -541,7 +557,7 @@ function updateRender(force) {
     const neededChunks = new Set();
 
     for (let dx = -renderDist; dx <= renderDist; dx++) {
-        for (let dy = -vertDistDown; dy <= vertDistUp; dy++) { // ★ 使用新的垂直范围
+        for (let dy = -vertDistDown; dy <= vertDistUp; dy++) { 
             for (let dz = -renderDist; dz <= renderDist; dz++) {
                 const cx = pcx + dx;
                 const cy = pcy + dy;
@@ -589,22 +605,18 @@ function clearAllWorldMeshes() {
     }
     chunkMeshes.clear();
     renderedMeshes.clear();
-    chunkModifications.clear();
     lastLightX = null; lastLightZ = null; lastLightY = null;
     lastChunkCx = null; lastChunkCy = null; lastChunkCz = null;
     lightEngine.clear();
 }
 
-// ★ 修复：当破坏方块时，重新激活被隐藏的邻居
 function updateExposedNeighbors(x, y, z) {
     const dirs = [[1,0,0], [-1,0,0], [0,1,0], [0,-1,0], [0,0,1], [0,0,-1]];
     for (const [dx, dy, dz] of dirs) {
         const nx = x + dx, ny = y + dy, nz = z + dz;
         const type = getBlockType(nx, ny, nz);
         if (type) {
-            // 如果它不在渲染列表里，说明之前被剔除了
             if (!renderedMeshes.has(worldKey(nx, ny, nz))) {
-                // 重新检查它是否暴露
                 let exposed = false;
                 if (getBlockType(nx+1,ny,nz)===null || getBlockType(nx-1,ny,nz)===null ||
                     getBlockType(nx,ny+1,nz)===null || getBlockType(nx,ny-1,nz)===null ||
@@ -612,7 +624,7 @@ function updateExposedNeighbors(x, y, z) {
                     exposed = true;
                 }
                 if (exposed) {
-                    addMeshByCoord(nx, ny, nz, type); // 重新加上去
+                    addMeshByCoord(nx, ny, nz, type); 
                 }
             }
         }
@@ -738,23 +750,32 @@ for(let dy=0.2;dy<30;dy+=0.2){const tg={x:player.pos.x,y:player.pos.y+dy,z:playe
 player.pos=randomSpawn();player.vy=0;player.onGround=false;
 }
 function physicsStep(dt){
-const forward=new THREE.Vector3(-Math.sin(player.yaw),0,-Math.cos(player.yaw));
-const right=new THREE.Vector3(Math.cos(player.yaw),0,-Math.sin(player.yaw));
+_physForward.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+_physRight.set(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
 if(spectatorMode){const f3=new THREE.Vector3(-Math.sin(player.yaw)*Math.cos(player.pitch),Math.sin(player.pitch),-Math.cos(player.yaw)*Math.cos(player.pitch));
-const move=new THREE.Vector3();move.addScaledVector(f3,-moveInput.y);move.addScaledVector(right,moveInput.x);
+const move=new THREE.Vector3();move.addScaledVector(f3,-moveInput.y);move.addScaledVector(_physRight,moveInput.x);
 if(move.length()>1)move.normalize();
 player.pos.x+=move.x*moveSpeed*dt;player.pos.y+=move.y*moveSpeed*dt;player.pos.z+=move.z*moveSpeed*dt;
 if(moveUpRequested)player.pos.y+=moveSpeed*dt;if(moveDownRequested)player.pos.y-=moveSpeed*dt;
 player.vy=0;return;}
-const move=new THREE.Vector3();move.addScaledVector(forward,-moveInput.y);move.addScaledVector(right,moveInput.x);
-if(move.length()>1)move.normalize();
-if(flyingMode){sweepMove('x',move.x*moveSpeed*dt);sweepMove('z',move.z*moveSpeed*dt);
+_physMove.set(0,0,0);_physMove.addScaledVector(_physForward,-moveInput.y);_physMove.addScaledVector(_physRight,moveInput.x);
+if(_physMove.length()>1)_physMove.normalize();
+if(flyingMode){sweepMove('x',_physMove.x*moveSpeed*dt);sweepMove('z',_physMove.z*moveSpeed*dt);
 if(moveUpRequested){const tg=player.pos.clone();tg.y+=moveSpeed*dt;if(!isColliding(tg))player.pos.y=tg.y}
 if(moveDownRequested){const tg=player.pos.clone();tg.y-=moveSpeed*dt;if(!isColliding(tg))player.pos.y=tg.y}
 player.vy=0;player.onGround=false;return;}
-sweepMove('x',move.x*moveSpeed*dt);sweepMove('z',move.z*moveSpeed*dt);
-if(jumpRequested&&player.onGround){player.vy=CONST.JUMP_SPEED;player.onGround=false}
-jumpRequested=false;
+sweepMove('x',_physMove.x*moveSpeed*dt);sweepMove('z',_physMove.z*moveSpeed*dt);
+
+// ★ 修复火箭跳跃：只有在着地、且垂直速度<=0、且距离上次跳跃超过200ms时才触发
+const now = performance.now();
+if ((jumpRequested || isJumping) && player.onGround && player.vy <= 0 && (now - lastJumpTime > 200)) {
+    player.vy = CONST.JUMP_SPEED;
+    player.onGround = false;
+    jumpRequested = false;
+    lastJumpTime = now;
+}
+jumpRequested = false; // 每次物理步进后重置缓冲，防止重复触发
+
 player.vy-=CONST.GRAVITY*dt;player.vy=Math.max(player.vy,-30);
 const hit=sweepMove('y',player.vy*dt);
 if(hit){if(player.vy<0){const g=exactGroundY(player.pos);if(g>-Infinity&&g<=player.pos.y+.1)player.pos.y=g;player.vy=0;player.onGround=true}
@@ -776,13 +797,18 @@ if(Math.abs(e.z)>1e-6){e.z=0;camera.quaternion.setFromEuler(e)}
 }
 const raycaster=new THREE.Raycaster();raycaster.far=5;
 const _rayDir=new THREE.Vector3();
+// ★ 性能优化：直接对区块组进行射线检测，避免展开巨大的 renderedMeshes 数组
 function raycast(){
     camera.getWorldDirection(_rayDir);
     raycaster.set(camera.position,_rayDir);
-    const hits=raycaster.intersectObjects([...renderedMeshes.values()],false);
+    const hits=raycaster.intersectObjects([...chunkMeshes.values()],true);
     if(hits.length===0)return null;
-    const h=hits[0];
-    return{block:h.object.userData,normal:h.face.normal.clone()};
+    for (const h of hits) {
+        if (h.object.userData && h.object.userData.type) {
+            return { block: h.object.userData, normal: h.face ? h.face.normal.clone() : new THREE.Vector3(0,1,0) };
+        }
+    }
+    return null;
 }
 function updateSelectionBox(){if(spectatorMode){selectionBox.visible=false;return}
 const hit=raycast();
@@ -834,7 +860,7 @@ refreshAfterBlockChange(x,y,z,type==='torch');
 if(type)spawnDrop(x+.5,y+.5,z+.5,type);
 playSound('break');
 applyGravityToColumn(x,z,y+1);
-updateExposedNeighbors(x, y, z); // ★ 核心修复：唤醒邻居方块
+updateExposedNeighbors(x, y, z); 
 scheduleSave();
 }
 function randomSpawn(){
@@ -869,13 +895,14 @@ try {
     refreshLightingAround(x,y,z);
 } catch(e) { console.error("刷新光照失败:", e); }
 }
+// ★ 性能优化：使用平方距离代替 Math.abs，减少遍历开销
 function refreshLightingAround(x,y,z){
 if(spectatorMode)return;
-const R=12;const minX=x-R,maxX=x+R,minZ=z-R,maxZ=z+R;
+const R=16; const R2 = R * R;
 for(const[k,mesh]of renderedMeshes){if(mesh.userData.type==='torch')continue;
-const cx=mesh.userData.x,cy=mesh.userData.y,cz=mesh.userData.z;
-if(cx<minX||cx>maxX)continue;if(cz<minZ||cz>maxZ)continue;
-const newLevel=getBlockLightLevel(cx,cy,cz);
+const dx = mesh.userData.x - x; const dz = mesh.userData.z - z;
+if (dx * dx + dz * dz > R2) continue;
+const newLevel=getBlockLightLevel(mesh.userData.x,mesh.userData.y,mesh.userData.z);
 if(mesh.userData.lightTier===newLevel)continue;
 mesh.userData.lightTier=newLevel;mesh.material=BLOCK_MATERIALS[mesh.userData.type][newLevel];}
 }
@@ -1156,6 +1183,7 @@ WORLD_SEED=Math.floor(Math.random()*1e9);
 if(newType)worldType=newType;
 worldTime=CONST.DAY_DURATION*.35;
 heightCache.clear();
+chunkModifications.clear();
 clearAllWorldMeshes();clearAllDrops();
 for(const k in inventory)delete inventory[k];
 inventory.grass=64;inventory.dirt=64;inventory.stone=64;
@@ -1190,7 +1218,12 @@ document.getElementById('dayNightSelect').addEventListener('change',e=>{dayNight
 document.getElementById('weatherSelect').addEventListener('change',e=>{forcedWeather=e.target.value});
 document.getElementById('antialiasToggle').addEventListener('change',e=>{hdRendering=e.target.checked;applyHD();scheduleSave()});
 document.getElementById('flyToggle').addEventListener('change',e=>{flyingMode=e.target.checked;if(!flyingMode){player.vy=0;unstickPlayer()}updateFlyButtons()});
-document.getElementById('spectatorToggle').addEventListener('change',e=>{spectatorMode=e.target.checked;updateFlyButtons();clearAllWorldMeshes();if(!spectatorMode)unstickPlayer();updateRender(true);});
+document.getElementById('spectatorToggle').addEventListener('change',e=>{
+    spectatorMode=e.target.checked;
+    updateFlyButtons();
+    needSkyLightRefresh=true; 
+    updateRender(true);
+});
 
 const activeTouches=new Map();
 document.addEventListener('touchstart',e=>{
@@ -1206,7 +1239,7 @@ for(const tg of e.changedTouches){
 const x=tg.clientX,y=tg.clientY;
 if(pointInCircle(x,y,ui.jump)){
 if(flyingMode||spectatorMode){moveUpRequested=true;activeTouches.set(tg.identifier,{type:'up'})}
-else{jumpRequested=true;activeTouches.set(tg.identifier,{type:'jump'})}
+else{isJumping=true; jumpRequested=true; activeTouches.set(tg.identifier,{type:'jump'})}
 continue;
 }
 if(document.getElementById('downBtn').style.display!=='none'&&pointInCircle(x,y,ui.down)){
@@ -1274,6 +1307,7 @@ if(!info)continue;
 if(info.type==='joystick')joyEnd();
 else if(info.type==='up')moveUpRequested=false;
 else if(info.type==='down')moveDownRequested=false;
+else if(info.type==='jump'){ isJumping=false; jumpRequested=false; } // ★ 修复：松开跳跃键时重置状态
 else if(info.type==='empty'){
 if(info.longPressTimer)clearTimeout(info.longPressTimer);
 if(!info.moved&&!info.longPressFired)tryPlace();
@@ -1289,6 +1323,7 @@ if(!info)continue;
 if(info.type==='joystick')joyEnd();
 if(info.type==='up')moveUpRequested=false;
 if(info.type==='down')moveDownRequested=false;
+if(info.type==='jump'){ isJumping=false; jumpRequested=false; } // ★ 修复：取消时重置
 if(info.longPressTimer)clearTimeout(info.longPressTimer);
 if(info.longPressFired)isBreaking=false;
 activeTouches.delete(tg.identifier);
@@ -1333,6 +1368,7 @@ tryBreak();
 updateDayNight(frameTime);
 updateWeather(frameTime);
 updateDrops(frameTime);
+}
 renderTimer+=frameTime;
 if(renderTimer > 1.2){
     renderTimer=0;
@@ -1348,7 +1384,6 @@ materialTimer=0;
 const force=needSkyLightRefresh;needSkyLightRefresh=false;
 refreshAllMeshMaterials(force);
 }}else{needSkyLightRefresh=false}
-}
 updateSelectionBox();
 updateCamera();
 renderer.render(scene,camera);
@@ -1414,7 +1449,6 @@ function initGame() {
             try {
                 updateRender(true);
                 const [pcx, pcy, pcz] = worldToChunk(Math.floor(player.pos.x), Math.floor(player.pos.y), Math.floor(player.pos.z));
-                // ★ 初始加载时，向下多加载几个区块，防止出生在虚空
                 for(let dx=-1; dx<=1; dx++) {
                     for(let dy=-5; dy<=1; dy++) {
                         for(let dz=-1; dz<=1; dz++) {
