@@ -73,7 +73,9 @@ English version: [README_EN.md](README_EN.md)
 ```bash
 python3 -m http.server 8000
 # 然后访问 http://localhost:8000
-
+```
+### 项目结构
+```
 .
 ├── index.html      # 主页面 + 游戏逻辑
 └── lighting.js     # 体素光照引擎
