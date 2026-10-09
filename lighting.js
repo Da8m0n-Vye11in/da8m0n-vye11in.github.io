@@ -1,5 +1,5 @@
 // ==========================================================
-// lighting.js v5 — 支持昼夜天空光因子
+// lighting.js v6 — 支持昼夜天空光因子 + 无限深度（负 Y 坐标）
 // ==========================================================
 (function (global) {
     'use strict';
@@ -18,7 +18,10 @@
             this.getBlockType = getBlockType;
             this.minX = 0; this.maxX = 0;
             this.minZ = 0; this.maxZ = 0;
+            // ★ 初始化 Y 轴边界
+            this.yMin = 0;
             this.yMax = 40;
+            
             this.skylight = null;
             this.blocklight = null;
             this.sizeX = 0;
@@ -36,41 +39,50 @@
             return true;
         }
 
-        _ensureSize(x0, x1, z0, z1, yMax) {
+        // ★ 适配负 Y 坐标的尺寸分配
+        _ensureSize(x0, x1, z0, z1, yMin, yMax) {
             const pad = 2;
             const nx0 = x0 - pad, nx1 = x1 + pad;
             const nz0 = z0 - pad, nz1 = z1 + pad;
+            
+            // 如果 X/Z 范围缩小，或者 Y 范围完全在当前缓存之内，且数组已存在，则无需重新分配
             if (nx0 >= this.minX && nx1 <= this.maxX &&
                 nz0 >= this.minZ && nz1 <= this.maxZ &&
-                yMax <= this.yMax && this.skylight) return;
+                yMin >= this.yMin && yMax <= this.yMax && this.skylight) return;
 
             this.minX = nx0; this.maxX = nx1;
             this.minZ = nz0; this.maxZ = nz1;
-            this.yMax = yMax;
+            this.yMin = yMin; this.yMax = yMax;
+            
             this.sizeX = nx1 - nx0 + 1;
             this.sizeZ = nz1 - nz0 + 1;
-            this.sizeY = yMax + 1;
+            // ★ 高度需要考虑负坐标，+1 是因为索引包含两端
+            this.sizeY = yMax - yMin + 1; 
+            
             const total = this.sizeX * this.sizeY * this.sizeZ;
             this.skylight = new Int8Array(total);
             this.blocklight = new Int8Array(total);
         }
 
+        // ★ 索引计算考虑 yMin 偏移
         _idx(x, y, z) {
-            return ((x - this.minX) * this.sizeY + y) * this.sizeZ + (z - this.minZ);
+            return ((x - this.minX) * this.sizeY + (y - this.yMin)) * this.sizeZ + (z - this.minZ);
         }
 
+        // ★ 越界检测适配 yMin
         _inBounds(x, y, z) {
             return x >= this.minX && x <= this.maxX &&
                    z >= this.minZ && z <= this.maxZ &&
-                   y >= 0 && y <= this.yMax;
+                   y >= this.yMin && y <= this.yMax;
         }
 
         isBlocked(x, y, z) {
             return this.getBlockType(x, y, z) !== null;
         }
 
-        rebuild(x0, x1, z0, z1, yMax) {
-            this._ensureSize(x0, x1, z0, z1, yMax);
+        // ★ 全量重建光照（适配 yMin）
+        rebuild(x0, x1, z0, z1, yMin, yMax) {
+            this._ensureSize(x0, x1, z0, z1, yMin, yMax);
             this.skylight.fill(0);
             this.blocklight.fill(0);
 
@@ -80,7 +92,8 @@
             for (let x = x0; x <= x1; x++) {
                 for (let z = z0; z <= z1; z++) {
                     let level = MAX_SKY_LIGHT;
-                    for (let y = this.yMax; y >= 0; y--) {
+                    // ★ 从 yMax 向下遍历到 yMin
+                    for (let y = this.yMax; y >= this.yMin; y--) {
                         const t = this.getBlockType(x, y, z);
                         const idx = this._idx(x, y, z);
 
@@ -103,6 +116,7 @@
             this._flood(blockQ, this.blocklight);
         }
 
+        // ★ 方块改变时的局部光照更新
         onBlockChanged(x, y, z) {
             if (!this.skylight) return;
             const R = 8;
@@ -112,11 +126,13 @@
             const z1 = Math.min(this.maxZ, z + R);
             if (x0 > x1 || z0 > z1) return;
 
+            // 1. 清除受影响区域的光照
             for (let cx = x0; cx <= x1; cx++) {
                 for (let cz = z0; cz <= z1; cz++) {
                     const base = ((cx - this.minX) * this.sizeY) * this.sizeZ + (cz - this.minZ);
-                    for (let cy = 0; cy <= this.yMax; cy++) {
-                        const i = base + cy * this.sizeZ;
+                    // ★ 从 yMin 开始遍历
+                    for (let cy = this.yMin; cy <= this.yMax; cy++) {
+                        const i = base + (cy - this.yMin) * this.sizeZ;
                         this.skylight[i] = 0;
                         this.blocklight[i] = 0;
                     }
@@ -126,12 +142,14 @@
             const skyQ = [];
             const blockQ = [];
 
+            // 2. 收集边界光照（作为光源种子）
             for (let cx = x0 - 1; cx <= x1 + 1; cx++) {
                 for (let cz = z0 - 1; cz <= z1 + 1; cz++) {
                     const inside = cx >= x0 && cx <= x1 && cz >= z0 && cz <= z1;
                     if (inside) continue;
-                    if (!this._inBounds(cx, 0, cz)) continue;
-                    for (let cy = 0; cy <= this.yMax; cy++) {
+                    if (!this._inBounds(cx, this.yMin, cz)) continue;
+                    // ★ 从 yMin 开始遍历
+                    for (let cy = this.yMin; cy <= this.yMax; cy++) {
                         const i = this._idx(cx, cy, cz);
                         const sky = this.skylight[i];
                         if (sky > 0) skyQ.push(cx, cy, cz, sky);
@@ -141,10 +159,12 @@
                 }
             }
 
+            // 3. 重新计算区域内的光照
             for (let cx = x0; cx <= x1; cx++) {
                 for (let cz = z0; cz <= z1; cz++) {
                     let level = MAX_SKY_LIGHT;
-                    for (let cy = this.yMax; cy >= 0; cy--) {
+                    // ★ 从 yMax 向下遍历到 yMin
+                    for (let cy = this.yMax; cy >= this.yMin; cy--) {
                         const t = this.getBlockType(cx, cy, cz);
                         const idx = this._idx(cx, cy, cz);
 
@@ -167,6 +187,7 @@
             this._flood(blockQ, this.blocklight);
         }
 
+        // ★ BFS 洪泛填充（适配 yMin）
         _flood(queue, map) {
             let i = 0;
             while (i < queue.length) {
@@ -181,7 +202,8 @@
                     const nx = x + DIRS[d];
                     const ny = y + DIRS[d + 1];
                     const nz = z + DIRS[d + 2];
-                    if (ny < 0 || ny > this.yMax) continue;
+                    // ★ 边界判断使用 yMin
+                    if (ny < this.yMin || ny > this.yMax) continue;
                     if (!this._inBounds(nx, ny, nz)) continue;
 
                     const idx = this._idx(nx, ny, nz);
