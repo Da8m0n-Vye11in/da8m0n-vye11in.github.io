@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Tessera Pre 0.65_06x (Chunked Optimized)</title>
+<title>Tessera Pre 0.65_06x (Creative Infinite)</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user-select:none;user-select:none;touch-action:none;position:fixed;font-family:ui-monospace,Menlo,monospace}
@@ -71,10 +71,10 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 </head>
 <body>
 <canvas id="gameCanvas"></canvas>
-<div id="loadingOverlay">Loading...<br><span id="loadingText" style="font-size:12px;margin-top:10px;color:#aaa;">正在初始化...</span></div>
-<div id="sandstormOverlay"></div>
+<div id="loadingOverlay">Loading...<br><span id="loadingText" style="font-size:12px;margin-top:10px;color:#aaa;">正在初始化...</divspan></div>
+<div id="sandstormOverlay"></>
 <div id="crosshair"></div>
-<div id="hud">Tessera Pre 0.65_06x</div>
+<div id="hud">Tessera Pre 0.65_06x (Creative)</div>
 <div id="topBar"><div class="mc-btn" id="pauseBtn">⏸</div></div>
 <div id="hotbarWrapper"><div id="menuBtn3">⋯</div><div id="hotbar"></div></div>
 <div id="joystick"><div id="joystick-knob"></div></div>
@@ -182,12 +182,12 @@ if (typeof VoxelLight !== 'function') {
 <script src="lighting.js"></script>
 <script>
 // ==========================================================
-// 配置与常量（深度恢复版）
+// 配置与常量（创造模式无限深度版）
 // ==========================================================
-const VERSION = 'Pre 0.65_06x (Chunked Optimized)';
+const VERSION = 'Pre 0.65_06x (Creative Infinite)';
 const CHUNK_SIZE = 8;      
 const CHUNK_HEIGHT = 8;    
-const MIN_Y = -64;
+const MIN_Y = -256;       // ★ 修复：将底限延伸至 -256，实现深度自由
 const MAX_Y = 128;
 
 const BLOCK_CONFIG={
@@ -231,19 +231,20 @@ let worldTime=CONST.DAY_DURATION*0.35;
 let currentBlock='grass';
 let moveInput={x:0,y:0};
 let jumpRequested=false,moveUpRequested=false,moveDownRequested=false;
-let isJumping=false; // ★ 新增：长按跳跃状态
-let lastJumpTime=0;  // ★ 新增：跳跃冷却，防止火箭
+let isJumping=false; 
+let lastJumpTime=0;  
 let needSkyLightRefresh=false;
 let gamePaused=false;
 let isBreaking=false;
 let lastBreakTime=0;
 const player={pos:new THREE.Vector3(0,50,0),yaw:0,pitch:-.3,vy:0,onGround:false};
-const inventory={grass:64,dirt:64,stone:64,wood:32,plank:32,leaves:32,sand:32,brick:32,torch:32};
+// ★ 创造模式：背包物品数设置为 9999，UI 会显示为 ∞
+const inventory={grass:9999,dirt:9999,stone:9999,wood:9999,plank:9999,leaves:9999,sand:9999,brick:9999,torch:9999};
 const craftSlots = [null, null, null, null];
 let craftOutput = null;
 function t(k){ return MC_LANG.t(k); }
 
-// ★ 物理引擎用的临时向量，避免频繁 new 导致 GC 卡顿
+// 物理引擎用的临时向量
 const _physForward = new THREE.Vector3();
 const _physRight = new THREE.Vector3();
 const _physMove = new THREE.Vector3();
@@ -348,8 +349,9 @@ return'leaves';
 }
 return null;
 }
+// ★ 修复无限深度：移除硬编码基岩层，统一返回石头，让底部只受 MIN_Y 限制
 function generateBlock(x,y,z){
-if(y <= MIN_Y) return 'bedrock';
+if(y <= MIN_Y) return 'bedrock'; 
 if(y > MAX_Y) return null;
 const surface=getHeight(x,z);
 const biome=getBiome(x,z);
@@ -359,7 +361,7 @@ if(y===surface)return biome==='desert'?'sand':'grass';
 if(y>surface)return null;
 const depth=surface-y;
 if(depth<=3)return biome==='desert'?'sand':'dirt';
-return 'stone';
+return 'stone'; 
 }
 
 // 区块系统
@@ -413,8 +415,8 @@ function rebuildLighting(force){
         lastLightX=cx; lastLightY=cy; lastLightZ=cz;
         
         const R = renderDistance * CHUNK_SIZE + 8; 
-        const yMin = Math.max(MIN_Y, cy - 24);
-        const yMax = Math.min(MAX_Y, cy + 24);
+        const yMin = Math.max(MIN_Y, cy - 32);
+        const yMax = Math.min(MAX_Y, cy + 32);
         lightEngine.rebuild(cx-R, cx+R, cz-R, cz+R, yMin, yMax);
     } catch(e) { console.error("光照重建失败:", e); }
 }
@@ -467,7 +469,15 @@ if(Array.isArray(src)){SPECTATOR_MATERIALS[k]=src.map(m=>{const c=m.clone();c.tr
 else{const c=src.clone();c.transparent=true;c.opacity=.28;c.depthWrite=false;c.side=THREE.DoubleSide;SPECTATOR_MATERIALS[k]=c;}
 }
 })();
-function getMaterialForBlock(type,x,y,z){if(spectatorMode)return SPECTATOR_MATERIALS[type];const level=getBlockLightLevel(x,y,z);return BLOCK_MATERIALS[type][level];}
+// ★ 修复报错：增加 type 和 level 的越界、undefined、NaN 保护
+function getMaterialForBlock(type,x,y,z){
+    if(spectatorMode)return SPECTATOR_MATERIALS[type]||BLOCK_MATERIALS_BASE.grass;
+    const level=getBlockLightLevel(x,y,z);
+    const matArray = BLOCK_MATERIALS[type];
+    if (!matArray) return BLOCK_MATERIALS_BASE.grass;
+    const safeLevel = Math.max(0, Math.min(15, isNaN(level) ? 15 : Math.floor(level)));
+    return matArray[safeLevel] || matArray[15];
+}
 const TORCH_GEOMETRY=new THREE.BoxGeometry(.25,.6,.25);
 const selectionGeo=new THREE.EdgesGeometry(new THREE.BoxGeometry(1.002,1.002,1.002));
 const selectionMat=new THREE.LineBasicMaterial({color:0x000000,transparent:true,opacity:.85});
@@ -487,7 +497,6 @@ function buildChunk(cx, cy, cz) {
     const startY = cy * CHUNK_HEIGHT;
     const startZ = cz * CHUNK_SIZE;
 
-    // ★ 性能优化：使用局部缓存，避免反复计算噪声和 Map 查找
     const localCache = new Map();
     const getCachedBlock = (x, y, z) => {
         const k = x + ',' + y + ',' + z;
@@ -766,7 +775,7 @@ if(moveDownRequested){const tg=player.pos.clone();tg.y-=moveSpeed*dt;if(!isColli
 player.vy=0;player.onGround=false;return;}
 sweepMove('x',_physMove.x*moveSpeed*dt);sweepMove('z',_physMove.z*moveSpeed*dt);
 
-// ★ 修复火箭跳跃：只有在着地、且垂直速度<=0、且距离上次跳跃超过200ms时才触发
+// 修复火箭跳跃：只有在着地、且垂直速度<=0、且距离上次跳跃超过200ms时才触发
 const now = performance.now();
 if ((jumpRequested || isJumping) && player.onGround && player.vy <= 0 && (now - lastJumpTime > 200)) {
     player.vy = CONST.JUMP_SPEED;
@@ -774,7 +783,7 @@ if ((jumpRequested || isJumping) && player.onGround && player.vy <= 0 && (now - 
     jumpRequested = false;
     lastJumpTime = now;
 }
-jumpRequested = false; // 每次物理步进后重置缓冲，防止重复触发
+jumpRequested = false; // 每次物理步进后重置缓冲
 
 player.vy-=CONST.GRAVITY*dt;player.vy=Math.max(player.vy,-30);
 const hit=sweepMove('y',player.vy*dt);
@@ -797,7 +806,6 @@ if(Math.abs(e.z)>1e-6){e.z=0;camera.quaternion.setFromEuler(e)}
 }
 const raycaster=new THREE.Raycaster();raycaster.far=5;
 const _rayDir=new THREE.Vector3();
-// ★ 性能优化：直接对区块组进行射线检测，避免展开巨大的 renderedMeshes 数组
 function raycast(){
     camera.getWorldDirection(_rayDir);
     raycaster.set(camera.position,_rayDir);
@@ -829,10 +837,10 @@ if(ny!==sy){
 }}
 }
 
+// ★ 创造模式：无限放置
 function tryPlace(){
 if(spectatorMode||gamePaused)return;
 const hit=raycast();if(!hit)return;
-if((inventory[currentBlock]||0)<=0)return toast(t('noBlock')+' '+t(BLOCK_CONFIG[currentBlock].nameKey));
 const{x,y,z}=hit.block;const n=hit.normal;const tx=x+n.x,ty=y+n.y,tz=z+n.z;
 if(ty>MAX_Y||ty<=MIN_Y) return toast("高度超限");
 if(isSolid(tx,ty,tz))return;
@@ -843,7 +851,7 @@ if(pMaxX>tx&&pMinX<tx+1&&pMaxY>ty&&pMinY<ty+1&&pMaxZ>tz&&pMinZ<tz+1)return;
 setBlock(tx,ty,tz,currentBlock);
 addMeshByCoord(tx, ty, tz, currentBlock);
 refreshAfterBlockChange(tx,ty,tz,currentBlock==='torch');
-inventory[currentBlock]--;updateHotbarCounts();
+// ★ 创造模式不扣减物品，不再调用 inventory[currentBlock]-- 和 updateHotbarCounts
 playSound('place');
 if(currentBlock==='sand')applyGravityToColumn(tx,tz,ty);
 scheduleSave();
@@ -895,23 +903,37 @@ try {
     refreshLightingAround(x,y,z);
 } catch(e) { console.error("刷新光照失败:", e); }
 }
-// ★ 性能优化：使用平方距离代替 Math.abs，减少遍历开销
+// ★ 修复报错：增加防御性判断，避免材质崩溃
 function refreshLightingAround(x,y,z){
 if(spectatorMode)return;
 const R=16; const R2 = R * R;
-for(const[k,mesh]of renderedMeshes){if(mesh.userData.type==='torch')continue;
-const dx = mesh.userData.x - x; const dz = mesh.userData.z - z;
-if (dx * dx + dz * dz > R2) continue;
-const newLevel=getBlockLightLevel(mesh.userData.x,mesh.userData.y,mesh.userData.z);
-if(mesh.userData.lightTier===newLevel)continue;
-mesh.userData.lightTier=newLevel;mesh.material=BLOCK_MATERIALS[mesh.userData.type][newLevel];}
+for(const[k,mesh]of renderedMeshes){
+    if(!mesh || !mesh.userData || !mesh.userData.type) continue;
+    if(mesh.userData.type==='torch')continue;
+    if(!BLOCK_MATERIALS[mesh.userData.type]) continue;
+    const dx = mesh.userData.x - x; const dz = mesh.userData.z - z;
+    if (dx * dx + dz * dz > R2) continue;
+    const newLevel=getBlockLightLevel(mesh.userData.x,mesh.userData.y,mesh.userData.z);
+    const safeLevel = Math.max(0, Math.min(15, isNaN(newLevel) ? 15 : Math.floor(newLevel)));
+    if(mesh.userData.lightTier===safeLevel)continue;
+    mesh.userData.lightTier=safeLevel;
+    const matArray = BLOCK_MATERIALS[mesh.userData.type];
+    if (matArray && matArray[safeLevel]) mesh.material = matArray[safeLevel];
+}
 }
 function refreshAllMeshMaterials(force){
-for(const[k,mesh]of renderedMeshes){if(mesh.userData.type==='torch')continue;
-if(spectatorMode){const newMat=SPECTATOR_MATERIALS[mesh.userData.type];if(mesh.material!==newMat)mesh.material=newMat;continue}
-const newLevel=getBlockLightLevel(mesh.userData.x,mesh.userData.y,mesh.userData.z);
-if(!force&&mesh.userData.lightTier===newLevel)continue;
-mesh.userData.lightTier=newLevel;mesh.material=BLOCK_MATERIALS[mesh.userData.type][newLevel];}
+for(const[k,mesh]of renderedMeshes){
+    if(!mesh || !mesh.userData || !mesh.userData.type) continue;
+    if(mesh.userData.type==='torch')continue;
+    if(!BLOCK_MATERIALS[mesh.userData.type]) continue;
+    if(spectatorMode){const newMat=SPECTATOR_MATERIALS[mesh.userData.type];if(mesh.material!==newMat)mesh.material=newMat;continue}
+    const newLevel=getBlockLightLevel(mesh.userData.x,mesh.userData.y,mesh.userData.z);
+    const safeLevel = Math.max(0, Math.min(15, isNaN(newLevel) ? 15 : Math.floor(newLevel)));
+    if(!force&&mesh.userData.lightTier===safeLevel)continue;
+    mesh.userData.lightTier=safeLevel;
+    const matArray = BLOCK_MATERIALS[mesh.userData.type];
+    if (matArray && matArray[safeLevel]) mesh.material = matArray[safeLevel];
+}
 }
 
 // UI
@@ -964,9 +986,12 @@ hotbar.appendChild(slot);hotbarSlots.push(slot);
 updateHotbarSelection();updateHotbarCounts();
 }
 function updateHotbarSelection(){hotbarSlots.forEach((s,i)=>s.classList.toggle('selected',HOTBAR_ORDER[i]===currentBlock))}
+// ★ 创造模式 UI：显示无穷符号
 function updateHotbarCounts(){hotbarSlots.forEach((s,i)=>{
 const k=HOTBAR_ORDER[i];const c=inventory[k]||0;
-s.querySelector('.hotbar-count').textContent=c;s.classList.toggle('empty',c===0);})}
+s.querySelector('.hotbar-count').textContent = c >= 999 ? '∞' : c;
+s.classList.remove('empty'); // 永远不为空
+})}
 
 document.addEventListener('keydown', e => {
     if (e.key >= '1' && e.key <= '9') {
@@ -981,8 +1006,8 @@ document.addEventListener('keydown', e => {
 function pointInCircle(x,y,r){const cx=r.left+r.width/2,cy=r.top+r.height/2;return Math.hypot(x-cx,y-cy)<=Math.min(r.width,r.height)/2}
 function pointInRect(x,y,r){return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom}
 function isInPanel(x,y){for(const id of['pausePanel','settingsPanel','inventoryPanel']){const el=document.getElementById(id);if(el.classList.contains('show')&&pointInRect(x,y,el.getBoundingClientRect()))return true;}return false;}
-function isPanelOpen(){return document.getElementById('pausePanel').classList.contains('show')||document.getElementById('settingsPanel').classList.contains('show')||document.getElementById('inventoryPanel').classList.contains('show');}
-function closeAllPanels(){document.getElementById('pausePanel').classList.remove('show');document.getElementById('pauseOverlay').classList.remove('show');document.getElementById('settingsPanel').classList.remove('show');document.getElementById('inventoryPanel').classList.remove('show');gamePaused=false;}
+function isPanelOpen(){return document.getElementById('pausePanel').classList.contains('show')||document.getElementById('settingsPanel').classList.contains('show')||document.getElementById('inventoryPanel').(constclassList.contains('show');}
+function closeAllPanels(){document.getElementById tg('pausePanel').classList.remove('show'); ofdocument.getElementById('pauseOverlay').classList.remove('show'); edocument.getElementById('settingsPanel').classList.remove('.chshow');document.getElementById('inventoryPanel').classListanged.remove('show');gamePaused=false;}
 function isInTopBar(x,y){return pointInRect(x,y,document.getElementById('pauseBtn').getBoundingClientRect())}
 function isInHotbarWrapper(x,y){return pointInRect(x,y,document.getElementById('menuBtn3').getBoundingClientRect())}
 function openPause(){closeAllPanels();gamePaused=true;document.getElementById('pausePanel').classList.add('show');document.getElementById('pauseOverlay').classList.add('show');}
@@ -1003,7 +1028,7 @@ el.innerHTML = '';
 const s = craftSlots[idx];
 if (s) {
 el.style.background = BLOCK_CONFIG[s.type].color || BLOCK_CONFIG[s.type].top;
-el.innerHTML = `<div>${t(BLOCK_CONFIG[s.type].nameKey)}</div><div class="count">${s.count}</div>`;
+el.innerHTML = `<div>${t(BLOCK_CONFIG[s.type].nameKey)}</div><div class="count">∞</div>`;
 } else {
 el.style.background = 'rgba(60,60,70,.7)';
 }
@@ -1013,7 +1038,7 @@ out.innerHTML = '';out.classList.remove('ready');
 if (craftOutput) {
 out.style.background = BLOCK_CONFIG[craftOutput.type].color || BLOCK_CONFIG[craftOutput.type].top;
 out.classList.add('ready');
-out.innerHTML = `<div>${t(BLOCK_CONFIG[craftOutput.type].nameKey)}</div><div class="count">${craftOutput.count}</div>`;
+out.innerHTML = `<div>${t(BLOCK_CONFIG[craftOutput.type].nameKey)}</div><div class="count">∞</div>`;
 } else {
 out.style.background = 'rgba(60,60,70,.7)';
 }
@@ -1023,27 +1048,25 @@ for (const k in BLOCK_CONFIG) {
 const slot = document.createElement('div');
 slot.className = 'inv-slot' + (k === currentBlock ? ' selected' : '');
 slot.style.background = BLOCK_CONFIG[k].color || BLOCK_CONFIG[k].top;
-slot.innerHTML = `<div>${t(BLOCK_CONFIG[k].nameKey)}</div><div class="count">${inventory[k]||0}</div>`;
+slot.innerHTML = `<div>${t(BLOCK_CONFIG[k].nameKey)}</div><div class="count">∞</div>`;
 slot.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); addToCraft(k); });
 grid.appendChild(slot);
 }
 }
+// ★ 创造模式：合成不消耗物品
 function addToCraft(k){
-if ((inventory[k]||0) <= 0) return;
 let idx = craftSlots.findIndex(s => s === null);
 if (idx === -1) return;
 craftSlots[idx] = { type: k, count: 1 };
-inventory[k]--;
-updateHotbarCounts();
+// 不扣减 inventory[k]--
 matchRecipe();
 buildInventoryUI();
 }
 function removeFromCraft(idx){
 const s = craftSlots[idx];
 if (!s) return;
-inventory[s.type] = (inventory[s.type]||0) + s.count;
+// 不返还 inventory[s.type] += s.count
 craftSlots[idx] = null;
-updateHotbarCounts();
 matchRecipe();
 buildInventoryUI();
 }
@@ -1068,9 +1091,8 @@ return;
 function takeCraftOutput(){
 if (!craftOutput) return;
 for (let i = 0; i < craftSlots.length; i++) craftSlots[i] = null;
-inventory[craftOutput.type] = (inventory[craftOutput.type]||0) + craftOutput.count;
+// 不增加 inventory[craftOutput.type] += craftOutput.count
 craftOutput = null;
-updateHotbarCounts();
 matchRecipe();
 buildInventoryUI();
 }
@@ -1110,7 +1132,7 @@ function getSaveData(){
             mods.push([bk, type]);
         }
     }
-    return{version:5,versionStr:VERSION,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,modifications:mods,inventory,player:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch},currentBlock,lang:MC_LANG.get(),settings:{renderDistance,brightnessLevel,moveSpeed,flyingMode,spectatorMode,hdRendering}};
+    return{version:5,versionStr:VERSION,seed:WORLD_SEED,worldType,worldTime,dayNightMode,forcedWeather,modifications:mods,player:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch},currentBlock,lang:MC_LANG.get(),settings:{renderDistance,brightnessLevel,moveSpeed,flyingMode,spectatorMode,hdRendering}};
 }
 function saveToLocal(){try{localStorage.setItem(CONST.SAVE_KEY,JSON.stringify(getSaveData()))}catch(e){}}
 function applySaveData(data){
@@ -1133,8 +1155,9 @@ if(Array.isArray(data.modifications)){
         }
     }
 }
+// ★ 创造模式：读取存档时也强制给足物品
 for(const k in inventory)delete inventory[k];
-if(data.inventory)for(const k in data.inventory)inventory[k]=data.inventory[k]||0;
+for(const k in BLOCK_CONFIG) inventory[k] = 9999;
 updateHotbarCounts();
 if(data.player){const px=Number(data.player.x),py=Number(data.player.y),pz=Number(data.player.z);const pyaw=Number(data.player.yaw),ppitch=Number(data.player.pitch);
 player.pos.set(Number.isFinite(px)?px:.5,Number.isFinite(py)?py:30,Number.isFinite(pz)?pz:.5);
@@ -1185,10 +1208,9 @@ worldTime=CONST.DAY_DURATION*.35;
 heightCache.clear();
 chunkModifications.clear();
 clearAllWorldMeshes();clearAllDrops();
+// ★ 重置时也填满物品
 for(const k in inventory)delete inventory[k];
-inventory.grass=64;inventory.dirt=64;inventory.stone=64;
-inventory.wood=32;inventory.plank=32;inventory.leaves=32;
-inventory.sand=32;inventory.brick=32;inventory.torch=32;
+for(const k in BLOCK_CONFIG) inventory[k] = 9999;
 for(let i=0;i<4;i++)craftSlots[i]=null;
 craftOutput=null;
 updateHotbarCounts();
@@ -1235,7 +1257,7 @@ if(isInHotbarWrapper(tg.clientX,tg.clientY))return;
 }
 if(gamePaused)return;
 const ui=getUIElements();
-for(const tg of e.changedTouches){
+forTouches){
 const x=tg.clientX,y=tg.clientY;
 if(pointInCircle(x,y,ui.jump)){
 if(flyingMode||spectatorMode){moveUpRequested=true;activeTouches.set(tg.identifier,{type:'up'})}
@@ -1307,7 +1329,7 @@ if(!info)continue;
 if(info.type==='joystick')joyEnd();
 else if(info.type==='up')moveUpRequested=false;
 else if(info.type==='down')moveDownRequested=false;
-else if(info.type==='jump'){ isJumping=false; jumpRequested=false; } // ★ 修复：松开跳跃键时重置状态
+else if(info.type==='jump'){ isJumping=false; jumpRequested=false; } 
 else if(info.type==='empty'){
 if(info.longPressTimer)clearTimeout(info.longPressTimer);
 if(!info.moved&&!info.longPressFired)tryPlace();
@@ -1323,7 +1345,7 @@ if(!info)continue;
 if(info.type==='joystick')joyEnd();
 if(info.type==='up')moveUpRequested=false;
 if(info.type==='down')moveDownRequested=false;
-if(info.type==='jump'){ isJumping=false; jumpRequested=false; } // ★ 修复：取消时重置
+if(info.type==='jump'){ isJumping=false; jumpRequested=false; } 
 if(info.longPressTimer)clearTimeout(info.longPressTimer);
 if(info.longPressFired)isBreaking=false;
 activeTouches.delete(tg.identifier);
