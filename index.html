@@ -65,10 +65,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 #sandstormOverlay{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5;opacity:0;transition:opacity .8s;background:linear-gradient(0deg,rgba(220,180,90,.5),rgba(200,160,80,.4))}
 #pauseOverlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.55);z-index:299;display:none}
 #pauseOverlay.show{display:block}
+#loadingOverlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.8);z-index:9999;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:18px;transition:opacity .5s}
+#loadingOverlay.hide{opacity:0;pointer-events:none}
 </style>
 </head>
 <body>
 <canvas id="gameCanvas"></canvas>
+<div id="loadingOverlay">Loading...<br><span id="loadingText" style="font-size:12px;margin-top:10px;color:#aaa;">正在初始化...</span></div>
 <div id="sandstormOverlay"></div>
 <div id="crosshair"></div>
 <div id="hud">Tessera Pre 0.65_06x</div>
@@ -147,6 +150,41 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 <input type="file" id="fileInput" accept=".json,application/json">
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.min.js"></script>
+<script>
+// ==========================================================
+// 全局错误捕获与兼容性兜底（Tessera 关键补丁）
+// ==========================================================
+window.onerror = function(msg, url, line, col, error) {
+    const errDiv = document.createElement('div');
+    errDiv.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(180,40,40,0.95); color:#fff; padding:20px; z-index:99999; font-size:16px; border-radius:8px; max-width:90vw; word-break:break-all;';
+    errDiv.innerHTML = `<b>💥 报错拦截</b><br>${msg}<br><small>${url}:${line}:${col}</small>`;
+    document.body.appendChild(errDiv);
+    document.getElementById('loadingOverlay').classList.add('hide');
+};
+
+// 语言文件兜底（防止 lang.js 未加载或缓存丢失）
+if (typeof MC_LANG === 'undefined') {
+    window.MC_LANG = {
+        t: (k) => k,
+        get: () => 'zh_cn',
+        set: () => {},
+        list: ['zh_cn', 'en']
+    };
+}
+// 光照引擎兜底
+if (typeof VoxelLight !== 'function') {
+    window.VoxelLight = class {
+        constructor() {}
+        rebuild() {}
+        onBlockChanged() {}
+        clear() {}
+        getLight() { return 12; }
+        getSkyLight() { return 12; }
+        getBlockLight() { return 0; }
+        setSkyFactor() { return false; }
+    };
+}
+</script>
 <script src="lang.js"></script>
 <script src="lighting.js"></script>
 <script>
@@ -205,6 +243,37 @@ const inventory={grass:64,dirt:64,stone:64,wood:32,plank:32,leaves:32,sand:32,br
 const craftSlots = [null, null, null, null];
 let craftOutput = null;
 function t(k){ return MC_LANG.t(k); }
+
+// ==========================================================
+// 简易音效引擎（Web Audio API 白嫖方案）
+// ==========================================================
+let audioCtx = null;
+function initAudio() {
+    if (audioCtx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) audioCtx = new AC();
+}
+function playSound(type) {
+    if (!audioCtx) return;
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    const now = audioCtx.currentTime;
+    if (type === 'break') {
+        osc.type = 'square'; osc.frequency.setValueAtTime(150, now);
+        osc.frequency.exponentialRampToValueAtTime(80, now + 0.1);
+        gain.gain.setValueAtTime(0.15, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now); osc.stop(now + 0.1);
+    } else if (type === 'place') {
+        osc.type = 'sine'; osc.frequency.setValueAtTime(300, now);
+        osc.frequency.exponentialRampToValueAtTime(500, now + 0.08);
+        gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+        osc.start(now); osc.stop(now + 0.08);
+    }
+}
+document.addEventListener('touchstart', initAudio, {once: true});
+document.addEventListener('mousedown', initAudio, {once: true});
 
 // 噪声
 function hash2(x,z,s){let n=x*374761393+z*668265263+s*1274126177;n=(n^(n>>13))*1274126177;return((n^(n>>16))>>>0)/4294967296}
@@ -320,17 +389,19 @@ let lightEngine;
 if (typeof VoxelLight === 'function') {
     lightEngine = new VoxelLight((x, y, z) => getBlockType(x, y, z));
 } else {
-    lightEngine = { rebuild(){}, onBlockChanged(){}, clear(){}, getLight(){return 12;}, getSkyLight(){return 12;}, getBlockLight(){return 0;}, setSkyFactor(){return false;} };
+    lightEngine = new VoxelLight(); // 兜底
 }
 let lastLightX = null, lastLightZ = null;
 function rebuildLighting(force){
-const cx=Math.floor(player.pos.x);
-const cz=Math.floor(player.pos.z);
-if(!force && lastLightX!==null && Math.abs(cx-lastLightX)<CONST.LIGHT_REBUILD_DIST && Math.abs(cz-lastLightZ)<CONST.LIGHT_REBUILD_DIST)return;
-lastLightX=cx;lastLightZ=cz;
-const R=renderDistance+2;
-const yMax=Math.min(CONST.LIGHT_Y_MAX,Math.floor(player.pos.y)+10);
-lightEngine.rebuild(cx-R,cx+R,cz-R,cz+R,yMax);
+try {
+    const cx=Math.floor(player.pos.x);
+    const cz=Math.floor(player.pos.z);
+    if(!force && lastLightX!==null && Math.abs(cx-lastLightX)<CONST.LIGHT_REBUILD_DIST && Math.abs(cz-lastLightZ)<CONST.LIGHT_REBUILD_DIST)return;
+    lastLightX=cx;lastLightZ=cz;
+    const R=renderDistance+2;
+    const yMax=Math.min(CONST.LIGHT_Y_MAX,Math.floor(player.pos.y)+10);
+    lightEngine.rebuild(cx-R,cx+R,cz-R,cz+R,yMax);
+} catch(e) { console.error("光照重建失败:", e); }
 }
 const LIGHT_LEVELS=16;
 function levelToBrightness(level){const l=Math.max(0,Math.min(15,level));return 0.18+(l/15)*0.82;}
@@ -402,8 +473,10 @@ scene.add(mesh);renderedMeshes.set(k,mesh);
 }
 function removeMeshAt(x,y,z){const k=worldKey(x,y,z);const m=renderedMeshes.get(k);if(m){scene.remove(m);renderedMeshes.delete(k)}}
 function refreshAfterBlockChange(x,y,z,isTorchChange){
-if(isTorchChange){lightEngine.clear();rebuildLighting(true);}else{lightEngine.onBlockChanged(x,y,z);}
-refreshLightingAround(x,y,z);
+try {
+    if(isTorchChange){lightEngine.clear();rebuildLighting(true);}else{lightEngine.onBlockChanged(x,y,z);}
+    refreshLightingAround(x,y,z);
+} catch(e) { console.error("刷新光照失败:", e); }
 }
 function refreshLightingAround(x,y,z){
 if(spectatorMode)return;
@@ -583,8 +656,10 @@ if(hit){selectionBox.position.set(hit.block.x+0.5,hit.block.y+0.5,hit.block.z+0.
 else selectionBox.visible=false;}
 function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),900);}
 function applyGravityToColumn(x,z,startY){
-const sands=[];for(let y=startY;y<startY+30;y++){if(y<1)continue;if(getBlockType(x,y,z)==='sand')sands.push(y)}
-for(const sy of sands){let ny=sy;while(ny>1&&!isSolid(x,ny-1,z))ny--;
+const sands=[];let loops = 0;
+for(let y=startY;y<startY+30;y++){if(y<1)continue;if(getBlockType(x,y,z)==='sand')sands.push(y)}
+for(const sy of sands){let ny=sy;
+while(ny>1&&!isSolid(x,ny-1,z)){ny--; loops++; if(loops > 100) break;}
 if(ny!==sy){setBlock(x,sy,z,null);removeMeshAt(x,sy,z);setBlock(x,ny,z,'sand');addMeshAt(x,ny,z,'sand')}}}
 function tryPlace(){
 if(spectatorMode||gamePaused)return;
@@ -599,6 +674,7 @@ if(pMaxX>tx&&pMinX<tx+1&&pMaxY>ty&&pMinY<ty+1&&pMaxZ>tz&&pMinZ<tz+1)return;
 setBlock(tx,ty,tz,currentBlock);addMeshAt(tx,ty,tz,currentBlock);
 refreshAfterBlockChange(tx,ty,tz,currentBlock==='torch');
 inventory[currentBlock]--;updateHotbarCounts();
+playSound('place');
 if(currentBlock==='sand')applyGravityToColumn(tx,tz,ty);
 scheduleSave();
 }
@@ -611,6 +687,7 @@ const type=getBlockType(x,y,z);
 setBlock(x,y,z,null);removeMeshAt(x,y,z);
 refreshAfterBlockChange(x,y,z,type==='torch');
 if(type)spawnDrop(x+.5,y+.5,z+.5,type);
+playSound('break');
 applyGravityToColumn(x,z,y+1);
 scheduleSave();
 }
@@ -636,7 +713,7 @@ const skyColor=SKY_NIGHT.clone().lerp(SKY_DAY,dayness);
 scene.background=skyColor;scene.fog.color=skyColor;
 sunSphere.visible=sunHeight>-.1;moonSphere.visible=sunHeight<.1;
 const skyFactor=0.28+dayness*0.72;
-if(lightEngine.setSkyFactor&&lightEngine.setSkyFactor(skyFactor)){needSkyLightRefresh=true}
+try { if(lightEngine.setSkyFactor&&lightEngine.setSkyFactor(skyFactor)){needSkyLightRefresh=true} } catch(e){}
 }
 
 // UI 多语言
@@ -681,7 +758,6 @@ const k=HOTBAR_ORDER[i];
 const slot=document.createElement('div');
 slot.className='hotbar-slot';slot.dataset.type=k;
 slot.style.background=BLOCK_CONFIG[k].color||BLOCK_CONFIG[k].top;
-// 数字角标
 const num=document.createElement('div');num.className='hotbar-num';num.textContent=(i+1);
 slot.appendChild(num);
 const count=document.createElement('div');count.className='hotbar-count';count.textContent=inventory[k]||0;
@@ -695,7 +771,6 @@ function updateHotbarCounts(){hotbarSlots.forEach((s,i)=>{
 const k=HOTBAR_ORDER[i];const c=inventory[k]||0;
 s.querySelector('.hotbar-count').textContent=c;s.classList.toggle('empty',c===0);})}
 
-// ★ 数字键 1-9 切换热栏
 document.addEventListener('keydown', e => {
     if (e.key >= '1' && e.key <= '9') {
         const idx = parseInt(e.key) - 1;
@@ -1113,21 +1188,71 @@ window.addEventListener('resize',resizeRenderer);
 window.addEventListener('orientationchange',()=>setTimeout(resizeRenderer,200));
 window.addEventListener('beforeunload',saveToLocal);
 
-initWeatherSystem();
-buildHotbar();
-refreshUI();
-document.getElementById('langSelect').value=MC_LANG.get();
-if(loadFromLocal()){setTimeout(()=>toast(t('loaded')),500);}
-else{WORLD_SEED=Math.floor(Math.random()*1e9);player.pos=randomSpawn();worldTime=CONST.DAY_DURATION*.35;}
-document.getElementById('worldTypeSelect').value=worldType;
-document.getElementById('dayNightSelect').value=dayNightMode;
-document.getElementById('weatherSelect').value=forcedWeather;
-document.getElementById('antialiasToggle').checked=hdRendering;
-resizeRenderer();
-applyHD();
-updateRender(true);
-updateFlyButtons();
-update();
+// ==========================================================
+// 启动流程（关键：分步加载，避免 iPad 主线程假死）
+// ==========================================================
+function updateLoading(text) {
+    const el = document.getElementById('loadingText');
+    if (el) el.textContent = text;
+}
+
+function initGame() {
+    try {
+        updateLoading("初始化天气系统...");
+        initWeatherSystem();
+        
+        updateLoading("构建UI...");
+        buildHotbar();
+        refreshUI();
+        document.getElementById('langSelect').value=MC_LANG.get();
+        
+        updateLoading("加载存档...");
+        if(loadFromLocal()){
+            setTimeout(()=>toast(t('loaded')),500);
+        }else{
+            WORLD_SEED=Math.floor(Math.random()*1e9);
+            player.pos=randomSpawn();
+            worldTime=CONST.DAY_DURATION*.35;
+        }
+        
+        document.getElementById('worldTypeSelect').value=worldType;
+        document.getElementById('dayNightSelect').value=dayNightMode;
+        document.getElementById('weatherSelect').value=forcedWeather;
+        document.getElementById('antialiasToggle').checked=hdRendering;
+        resizeRenderer();
+        applyHD();
+        updateFlyButtons();
+        
+        updateLoading("生成方块世界...");
+        // 让浏览器先渲染完 Loading 文字，再执行繁重的同步计算
+        setTimeout(() => {
+            try {
+                updateRender(true);
+                updateLoading("加载完成！");
+                setTimeout(() => {
+                    document.getElementById('loadingOverlay').classList.add('hide');
+                    update();
+                }, 100);
+            } catch (e) {
+                showFatalError(e);
+            }
+        }, 100);
+    } catch (e) {
+        showFatalError(e);
+    }
+}
+
+function showFatalError(e) {
+    const errDiv = document.createElement('div');
+    errDiv.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:rgba(180,40,40,0.95); color:#fff; padding:20px; z-index:99999; font-size:16px; border-radius:8px; max-width:90vw;';
+    errDiv.innerHTML = `<b>💥 初始化致命错误</b><br>${e.message || e}<br><small>${e.stack || ''}</small>`;
+    document.body.appendChild(errDiv);
+    document.getElementById('loadingOverlay').classList.add('hide');
+}
+
+// 延迟 100ms 启动，确保 DOM 完全就绪，同时让出主线程
+setTimeout(initGame, 100);
+
 </script>
 </body>
 </html>
