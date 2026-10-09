@@ -71,8 +71,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#87CEEB;-webkit-user
 </head>
 <body>
 <canvas id="gameCanvas"></canvas>
-<div id="loadingOverlay">Loading...<br><span id="loadingText" style="font-size:12px;margin-top:10px;color:#aaa;">正在初始化...</divspan></div>
-<div id="sandstormOverlay"></>
+<div id="loadingOverlay">Loading...<br><span id="loadingText" style="font-size:12px;margin-top:10px;color:#aaa;">正在初始化...</span></div>
+<div id="sandstormOverlay"></div>
 <div id="crosshair"></div>
 <div id="hud">Tessera Pre 0.65_06x (Creative)</div>
 <div id="topBar"><div class="mc-btn" id="pauseBtn">⏸</div></div>
@@ -163,7 +163,8 @@ window.onerror = function(msg, url, line, col, error) {
 };
 
 if (typeof MC_LANG === 'undefined') {
-    window.MC_LANG = { t: (k) => k, get: () => 'zh_cn', set: () => {}, list: ['zh_cn', 'en'] };
+    // ★ 关键修复：所有键名都加上了引号，防止手动输入时把冒号误打成点号
+    window.MC_LANG = { "t": (k) => k, "get": () => 'zh_cn', "set": () => {}, "list": ["zh_cn", "en"] };
 }
 if (typeof VoxelLight !== 'function') {
     window.VoxelLight = class {
@@ -187,34 +188,36 @@ if (typeof VoxelLight !== 'function') {
 const VERSION = 'Pre 0.65_06x (Creative Infinite)';
 const CHUNK_SIZE = 8;      
 const CHUNK_HEIGHT = 8;    
-const MIN_Y = -256;       // ★ 修复：将底限延伸至 -256，实现深度自由
+const MIN_Y = -256;       
 const MAX_Y = 128;
 
+// ★ 所有键名都加上了引号
 const BLOCK_CONFIG={
-grass:{nameKey:'grass',top:'#7ec850',side:'#8fb860',bottom:'#8b5a2b'},
-dirt:{nameKey:'dirt',color:'#8b5a2b'},
-stone:{nameKey:'stone',color:'#888888'},
-wood:{nameKey:'wood',color:'#6b4423'},
-plank:{nameKey:'plank',color:'#b88a4a'},
-leaves:{nameKey:'leaves',color:'#3d7a1e'},
-sand:{nameKey:'sandBlock',color:'#d4c694',gravity:true},
-brick:{nameKey:'brick',color:'#a04030'},
-torch:{nameKey:'torch',color:'#ffcc33',light:true,emissive:true}
+"grass":{"nameKey":"grass","top":"#7ec850","side":"#8fb860","bottom":"#8b5a2b"},
+"dirt":{"nameKey":"dirt","color":"#8b5a2b"},
+"stone":{"nameKey":"stone","color":"#888888"},
+"wood":{"nameKey":"wood","color":"#6b4423"},
+"plank":{"nameKey":"plank","color":"#b88a4a"},
+"leaves":{"nameKey":"leaves","color":"#3d7a1e"},
+"sand":{"nameKey":"sandBlock","color":"#d4c694","gravity":true},
+"brick":{"nameKey":"brick","color":"#a04030"},
+"torch":{"nameKey":"torch","color":"#ffcc33","light":true,"emissive":true}
 };
 const HOTBAR_ORDER=['grass','dirt','stone','wood','plank','leaves','sand','brick','torch'];
 const RECIPES=[{ inputs: {wood: 1}, outputs: {plank: 4} }];
 
+// ★ 所有键名都加上了引号
 const CONST={
-GRAVITY:22,JUMP_SPEED:8.5,
-PLAYER_W:.6,PLAYER_H:1.8,EYE_H:1.6,
-SAVE_KEY:'tessera_v5',
-FIXED_DT:1/30,
-LONG_PRESS_MS:350,MOVE_THRESHOLD:25,SWEEP_STEP:.08,
-BREAK_INTERVAL_MS: 320,
-PITCH_LIMIT:1.45,
-DAY_DURATION:2400,WEATHER_MIN:300,WEATHER_MAX:600,
-LIGHT_REBUILD_DIST:8,
-MATERIAL_UPDATE_INTERVAL:1.2
+"GRAVITY":22,"JUMP_SPEED":8.5,
+"PLAYER_W":.6,"PLAYER_H":1.8,"EYE_H":1.6,
+"SAVE_KEY":'tessera_v5',
+"FIXED_DT":1/30,
+"LONG_PRESS_MS":350,"MOVE_THRESHOLD":25,"SWEEP_STEP":.08,
+"BREAK_INTERVAL_MS": 320,
+"PITCH_LIMIT":1.45,
+"DAY_DURATION":2400,"WEATHER_MIN":300,"WEATHER_MAX":600,
+"LIGHT_REBUILD_DIST":8,
+"MATERIAL_UPDATE_INTERVAL":1.2
 };
 
 let WORLD_SEED=Math.floor(Math.random()*1e9);
@@ -238,7 +241,6 @@ let gamePaused=false;
 let isBreaking=false;
 let lastBreakTime=0;
 const player={pos:new THREE.Vector3(0,50,0),yaw:0,pitch:-.3,vy:0,onGround:false};
-// ★ 创造模式：背包物品数设置为 9999，UI 会显示为 ∞
 const inventory={grass:9999,dirt:9999,stone:9999,wood:9999,plank:9999,leaves:9999,sand:9999,brick:9999,torch:9999};
 const craftSlots = [null, null, null, null];
 let craftOutput = null;
@@ -349,9 +351,8 @@ return'leaves';
 }
 return null;
 }
-// ★ 修复无限深度：移除硬编码基岩层，统一返回石头，让底部只受 MIN_Y 限制
 function generateBlock(x,y,z){
-if(y <= MIN_Y) return 'bedrock'; 
+if(y <= MIN_Y) return 'bedrock';
 if(y > MAX_Y) return null;
 const surface=getHeight(x,z);
 const biome=getBiome(x,z);
@@ -469,7 +470,6 @@ if(Array.isArray(src)){SPECTATOR_MATERIALS[k]=src.map(m=>{const c=m.clone();c.tr
 else{const c=src.clone();c.transparent=true;c.opacity=.28;c.depthWrite=false;c.side=THREE.DoubleSide;SPECTATOR_MATERIALS[k]=c;}
 }
 })();
-// ★ 修复报错：增加 type 和 level 的越界、undefined、NaN 保护
 function getMaterialForBlock(type,x,y,z){
     if(spectatorMode)return SPECTATOR_MATERIALS[type]||BLOCK_MATERIALS_BASE.grass;
     const level=getBlockLightLevel(x,y,z);
@@ -775,7 +775,6 @@ if(moveDownRequested){const tg=player.pos.clone();tg.y-=moveSpeed*dt;if(!isColli
 player.vy=0;player.onGround=false;return;}
 sweepMove('x',_physMove.x*moveSpeed*dt);sweepMove('z',_physMove.z*moveSpeed*dt);
 
-// 修复火箭跳跃：只有在着地、且垂直速度<=0、且距离上次跳跃超过200ms时才触发
 const now = performance.now();
 if ((jumpRequested || isJumping) && player.onGround && player.vy <= 0 && (now - lastJumpTime > 200)) {
     player.vy = CONST.JUMP_SPEED;
@@ -783,7 +782,7 @@ if ((jumpRequested || isJumping) && player.onGround && player.vy <= 0 && (now - 
     jumpRequested = false;
     lastJumpTime = now;
 }
-jumpRequested = false; // 每次物理步进后重置缓冲
+jumpRequested = false; 
 
 player.vy-=CONST.GRAVITY*dt;player.vy=Math.max(player.vy,-30);
 const hit=sweepMove('y',player.vy*dt);
@@ -837,7 +836,6 @@ if(ny!==sy){
 }}
 }
 
-// ★ 创造模式：无限放置
 function tryPlace(){
 if(spectatorMode||gamePaused)return;
 const hit=raycast();if(!hit)return;
@@ -851,7 +849,6 @@ if(pMaxX>tx&&pMinX<tx+1&&pMaxY>ty&&pMinY<ty+1&&pMaxZ>tz&&pMinZ<tz+1)return;
 setBlock(tx,ty,tz,currentBlock);
 addMeshByCoord(tx, ty, tz, currentBlock);
 refreshAfterBlockChange(tx,ty,tz,currentBlock==='torch');
-// ★ 创造模式不扣减物品，不再调用 inventory[currentBlock]-- 和 updateHotbarCounts
 playSound('place');
 if(currentBlock==='sand')applyGravityToColumn(tx,tz,ty);
 scheduleSave();
@@ -903,7 +900,6 @@ try {
     refreshLightingAround(x,y,z);
 } catch(e) { console.error("刷新光照失败:", e); }
 }
-// ★ 修复报错：增加防御性判断，避免材质崩溃
 function refreshLightingAround(x,y,z){
 if(spectatorMode)return;
 const R=16; const R2 = R * R;
@@ -986,11 +982,10 @@ hotbar.appendChild(slot);hotbarSlots.push(slot);
 updateHotbarSelection();updateHotbarCounts();
 }
 function updateHotbarSelection(){hotbarSlots.forEach((s,i)=>s.classList.toggle('selected',HOTBAR_ORDER[i]===currentBlock))}
-// ★ 创造模式 UI：显示无穷符号
 function updateHotbarCounts(){hotbarSlots.forEach((s,i)=>{
 const k=HOTBAR_ORDER[i];const c=inventory[k]||0;
 s.querySelector('.hotbar-count').textContent = c >= 999 ? '∞' : c;
-s.classList.remove('empty'); // 永远不为空
+s.classList.remove('empty'); 
 })}
 
 document.addEventListener('keydown', e => {
@@ -1006,8 +1001,8 @@ document.addEventListener('keydown', e => {
 function pointInCircle(x,y,r){const cx=r.left+r.width/2,cy=r.top+r.height/2;return Math.hypot(x-cx,y-cy)<=Math.min(r.width,r.height)/2}
 function pointInRect(x,y,r){return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom}
 function isInPanel(x,y){for(const id of['pausePanel','settingsPanel','inventoryPanel']){const el=document.getElementById(id);if(el.classList.contains('show')&&pointInRect(x,y,el.getBoundingClientRect()))return true;}return false;}
-function isPanelOpen(){return document.getElementById('pausePanel').classList.contains('show')||document.getElementById('settingsPanel').classList.contains('show')||document.getElementById('inventoryPanel').(constclassList.contains('show');}
-function closeAllPanels(){document.getElementById tg('pausePanel').classList.remove('show'); ofdocument.getElementById('pauseOverlay').classList.remove('show'); edocument.getElementById('settingsPanel').classList.remove('.chshow');document.getElementById('inventoryPanel').classListanged.remove('show');gamePaused=false;}
+function isPanelOpen(){return document.getElementById('pausePanel').classList.contains('show')||document.getElementById('settingsPanel').classList.contains('show')||document.getElementById('inventoryPanel').classList.contains('show');}
+function closeAllPanels(){document.getElementById('pausePanel').classList.remove('show');document.getElementById('pauseOverlay').classList.remove('show');document.getElementById('settingsPanel').classList.remove('show');document.getElementById('inventoryPanel').classList.remove('show');gamePaused=false;}
 function isInTopBar(x,y){return pointInRect(x,y,document.getElementById('pauseBtn').getBoundingClientRect())}
 function isInHotbarWrapper(x,y){return pointInRect(x,y,document.getElementById('menuBtn3').getBoundingClientRect())}
 function openPause(){closeAllPanels();gamePaused=true;document.getElementById('pausePanel').classList.add('show');document.getElementById('pauseOverlay').classList.add('show');}
@@ -1053,19 +1048,16 @@ slot.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); a
 grid.appendChild(slot);
 }
 }
-// ★ 创造模式：合成不消耗物品
 function addToCraft(k){
 let idx = craftSlots.findIndex(s => s === null);
 if (idx === -1) return;
 craftSlots[idx] = { type: k, count: 1 };
-// 不扣减 inventory[k]--
 matchRecipe();
 buildInventoryUI();
 }
 function removeFromCraft(idx){
 const s = craftSlots[idx];
 if (!s) return;
-// 不返还 inventory[s.type] += s.count
 craftSlots[idx] = null;
 matchRecipe();
 buildInventoryUI();
@@ -1091,7 +1083,6 @@ return;
 function takeCraftOutput(){
 if (!craftOutput) return;
 for (let i = 0; i < craftSlots.length; i++) craftSlots[i] = null;
-// 不增加 inventory[craftOutput.type] += craftOutput.count
 craftOutput = null;
 matchRecipe();
 buildInventoryUI();
@@ -1155,7 +1146,6 @@ if(Array.isArray(data.modifications)){
         }
     }
 }
-// ★ 创造模式：读取存档时也强制给足物品
 for(const k in inventory)delete inventory[k];
 for(const k in BLOCK_CONFIG) inventory[k] = 9999;
 updateHotbarCounts();
@@ -1208,7 +1198,6 @@ worldTime=CONST.DAY_DURATION*.35;
 heightCache.clear();
 chunkModifications.clear();
 clearAllWorldMeshes();clearAllDrops();
-// ★ 重置时也填满物品
 for(const k in inventory)delete inventory[k];
 for(const k in BLOCK_CONFIG) inventory[k] = 9999;
 for(let i=0;i<4;i++)craftSlots[i]=null;
@@ -1257,7 +1246,7 @@ if(isInHotbarWrapper(tg.clientX,tg.clientY))return;
 }
 if(gamePaused)return;
 const ui=getUIElements();
-forTouches){
+for(const tg of e.changedTouches){
 const x=tg.clientX,y=tg.clientY;
 if(pointInCircle(x,y,ui.jump)){
 if(flyingMode||spectatorMode){moveUpRequested=true;activeTouches.set(tg.identifier,{type:'up'})}
